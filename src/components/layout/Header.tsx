@@ -1,49 +1,86 @@
-import Link from "next/link";
-import { Search, Bell, User } from "lucide-react";
+"use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Search, Bell, User, Home, Users, CalendarHeart } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+/**
+ * 헤더 컴포넌트 - PRD v0.5 기준
+ * 모바일: 로고 + 검색 + 알림 + 프로필
+ * 데스크톱: 로고 + 4탭 네비게이션 + 검색 + 알림 + 프로필
+ */
 export function Header() {
+    const pathname = usePathname();
+
+    const navItems = [
+        { title: "홈", href: "/", icon: Home },
+        { title: "탐색", href: "/explore", icon: Search },
+        { title: "커뮤니티", href: "/community", icon: Users },
+        { title: "MyFes", href: "/myfes", icon: CalendarHeart },
+    ];
+
     return (
         <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="container mx-auto flex h-14 items-center px-4">
-                {/* Logo */}
-                <Link href="/" className="mr-6 flex items-center space-x-2">
+            <div className="container flex h-14 items-center justify-between px-4">
+                {/* 로고 */}
+                <Link href="/" className="flex items-center space-x-2">
                     <span className="text-xl font-bold bg-gradient-to-r from-primary to-pink-500 bg-clip-text text-transparent">
                         FesMate
                     </span>
                 </Link>
 
-                {/* Desktop Navigation */}
-                <nav className="hidden md:flex items-center space-x-6 text-sm font-medium">
-                    <Link href="/events/hub" className="transition-colors hover:text-foreground/80 text-foreground/60">
-                        Event Hub
-                    </Link>
-                    <Link href="/companions" className="transition-colors hover:text-foreground/80 text-foreground/60">
-                        Transfer
-                    </Link>
-                    <Link href="/artists" className="transition-colors hover:text-foreground/80 text-foreground/60">
-                        Artists
-                    </Link>
+                {/* 데스크톱 네비게이션 */}
+                <nav className="hidden md:flex items-center space-x-6">
+                    {navItems.map((item) => {
+                        const isActive =
+                            pathname === item.href ||
+                            (item.href !== "/" && pathname.startsWith(item.href));
+
+                        return (
+                            <Link
+                                key={item.href}
+                                href={item.href}
+                                className={cn(
+                                    "text-sm font-medium transition-colors hover:text-primary",
+                                    isActive ? "text-primary" : "text-muted-foreground"
+                                )}
+                            >
+                                {item.title}
+                            </Link>
+                        );
+                    })}
                 </nav>
 
-                {/* Search & Actions */}
-                <div className="flex flex-1 items-center justify-end space-x-4">
-                    <div className="w-full max-w-sm flex-1 md:w-auto md:flex-none">
-                        <button className="inline-flex items-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 w-full justify-start text-muted-foreground md:w-64 lg:w-80">
-                            <Search className="mr-2 h-4 w-4" />
-                            <span>Search events...</span>
-                        </button>
-                    </div>
+                {/* 우측 액션 버튼 */}
+                <div className="flex items-center space-x-3">
+                    {/* 통합 검색 */}
+                    <button
+                        className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                        aria-label="검색"
+                    >
+                        <Search className="h-5 w-5" />
+                    </button>
 
-                    <nav className="flex items-center space-x-2">
-                        <button className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 w-9">
-                            <Bell className="h-5 w-5" />
-                            <span className="sr-only">Notifications</span>
-                        </button>
-                        <button className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 w-9">
-                            <User className="h-5 w-5" />
-                            <span className="sr-only">Profile</span>
-                        </button>
-                    </nav>
+                    {/* 알림함 */}
+                    <Link
+                        href="/notifications"
+                        className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-colors relative"
+                        aria-label="알림"
+                    >
+                        <Bell className="h-5 w-5" />
+                        {/* 안읽은 알림 표시 (추후 조건부 렌더링) */}
+                        {/* <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" /> */}
+                    </Link>
+
+                    {/* 프로필/로그인 */}
+                    <Link
+                        href="/login"
+                        className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                        aria-label="프로필"
+                    >
+                        <User className="h-5 w-5" />
+                    </Link>
                 </div>
             </div>
         </header>
