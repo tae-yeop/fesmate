@@ -202,6 +202,164 @@ export const MOCK_EVENTS: Event[] = [
         createdAt: addDays(now, -7),
         updatedAt: addDays(now, -7),
     },
+
+    // 무료 행사 - 서울
+    {
+        id: "e7",
+        title: "한강 버스킹 페스티벌",
+        startAt: addDays(now, 7),
+        endAt: addDays(now, 7),
+        timezone: "Asia/Seoul",
+        venue: {
+            id: "v7",
+            name: "반포한강공원",
+            address: "서울시 서초구 신반포로11길 40",
+        },
+        type: "festival",
+        status: "SCHEDULED",
+        overrideMode: "AUTO",
+        price: "무료",
+        description: "한강에서 즐기는 무료 버스킹 공연",
+        artists: [
+            { id: "a10", name: "버스킹 아티스트", genre: "Acoustic" },
+        ],
+        stats: {
+            reportCount: 0,
+            companionCount: 8,
+            wishlistCount: 500,
+            attendedCount: 0,
+            reviewCount: 0,
+        },
+        badges: ["Free"],
+        createdAt: addDays(now, -5),
+        updatedAt: addDays(now, -5),
+    },
+
+    // 부산 행사
+    {
+        id: "e8",
+        title: "부산 락 페스티벌 2025",
+        startAt: addDays(now, 14),
+        endAt: addDays(now, 15),
+        timezone: "Asia/Seoul",
+        venue: {
+            id: "v8",
+            name: "부산 삼락생태공원",
+            address: "부산시 사상구 삼락동",
+        },
+        type: "festival",
+        status: "SCHEDULED",
+        overrideMode: "AUTO",
+        posterUrl: "/images/busan-rock.jpg",
+        price: "1일권 88,000원 / 2일권 150,000원",
+        description: "부산 최대 규모 락 페스티벌",
+        artists: [
+            { id: "a11", name: "락 밴드 A", genre: "Rock" },
+            { id: "a12", name: "락 밴드 B", genre: "Rock" },
+        ],
+        stats: {
+            reportCount: 0,
+            companionCount: 12,
+            wishlistCount: 2100,
+            attendedCount: 0,
+            reviewCount: 0,
+        },
+        badges: ["Hot"],
+        createdAt: addDays(now, -20),
+        updatedAt: addDays(now, -20),
+    },
+
+    // 인천 무료 행사
+    {
+        id: "e9",
+        title: "인천 펜타포트 프리 스테이지",
+        startAt: addDays(now, 21),
+        endAt: addDays(now, 21),
+        timezone: "Asia/Seoul",
+        venue: {
+            id: "v9",
+            name: "송도 센트럴파크",
+            address: "인천시 연수구 송도동",
+        },
+        type: "concert",
+        status: "SCHEDULED",
+        overrideMode: "AUTO",
+        price: "무료 (사전등록 필수)",
+        description: "펜타포트 페스티벌 사전 무료 공연",
+        artists: [
+            { id: "a13", name: "인디 아티스트 C", genre: "Indie" },
+        ],
+        stats: {
+            reportCount: 0,
+            companionCount: 3,
+            wishlistCount: 800,
+            attendedCount: 0,
+            reviewCount: 0,
+        },
+        badges: ["Free"],
+        createdAt: addDays(now, -3),
+        updatedAt: addDays(now, -3),
+    },
+
+    // 대전 행사
+    {
+        id: "e10",
+        title: "대전 사이언스 뮤직 페스티벌",
+        startAt: addDays(now, 10),
+        endAt: addDays(now, 10),
+        timezone: "Asia/Seoul",
+        venue: {
+            id: "v10",
+            name: "대전엑스포시민광장",
+            address: "대전시 유성구 대덕대로 480",
+        },
+        type: "festival",
+        status: "SCHEDULED",
+        overrideMode: "AUTO",
+        price: "55,000원",
+        description: "과학과 음악의 만남",
+        artists: [
+            { id: "a14", name: "일렉트로닉 아티스트", genre: "Electronic" },
+        ],
+        stats: {
+            reportCount: 0,
+            companionCount: 2,
+            wishlistCount: 350,
+            attendedCount: 0,
+            reviewCount: 0,
+        },
+        createdAt: addDays(now, -8),
+        updatedAt: addDays(now, -8),
+    },
+
+    // 광주 무료 전시
+    {
+        id: "e11",
+        title: "광주 미디어아트 전시",
+        startAt: addDays(now, 5),
+        endAt: addDays(now, 60),
+        timezone: "Asia/Seoul",
+        venue: {
+            id: "v11",
+            name: "국립아시아문화전당",
+            address: "광주시 동구 문화전당로 38",
+        },
+        type: "exhibition",
+        status: "SCHEDULED",
+        overrideMode: "AUTO",
+        price: "무료",
+        description: "광주에서 만나는 미디어아트",
+        stats: {
+            reportCount: 0,
+            companionCount: 0,
+            wishlistCount: 420,
+            attendedCount: 0,
+            reviewCount: 0,
+        },
+        badges: ["Free"],
+        createdAt: addDays(now, -15),
+        updatedAt: addDays(now, -15),
+    },
 ];
 
 /**

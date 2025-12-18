@@ -22,6 +22,7 @@ import { Post, POST_TYPE_LABELS, PostType } from "@/types/post";
 import { PostComposer } from "@/components/posts/PostComposer";
 import { PostActionMenu } from "@/components/safety";
 import { useAuth } from "@/lib/auth-context";
+import { COMMUNITY_STATUS_COLORS } from "@/lib/constants/styles";
 
 type CategoryType = "companion" | "taxi" | "meal" | "lodge" | "transfer" | "tip" | "question";
 
@@ -227,10 +228,7 @@ export default function CommunityPage() {
                                     <div className="flex items-center gap-2">
                                         <span className={cn(
                                             "px-2 py-0.5 rounded text-xs font-medium",
-                                            status === "ACTIVE" && "bg-green-100 text-green-700",
-                                            status === "EXPIRING" && "bg-yellow-100 text-yellow-700",
-                                            status === "EXPIRED" && "bg-gray-100 text-gray-500",
-                                            status === "CLOSED" && "bg-blue-100 text-blue-700",
+                                            COMMUNITY_STATUS_COLORS[status]
                                         )}>
                                             {status === "ACTIVE" && "모집중"}
                                             {status === "EXPIRING" && "마감 임박"}

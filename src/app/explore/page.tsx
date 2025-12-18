@@ -59,6 +59,15 @@ export default function ExplorePage() {
             );
         }
 
+        // 지역 필터
+        if (filters.region) {
+            events = events.filter((e) => {
+                const address = e.venue.address || "";
+                const name = e.venue.name || "";
+                return address.includes(filters.region!) || name.includes(filters.region!);
+            });
+        }
+
         // 장르 필터
         if (filters.genre) {
             const genreMap: Record<string, string> = {
@@ -69,6 +78,15 @@ export default function ExplorePage() {
                 "스포츠": "sports",
             };
             events = events.filter((e) => e.type === genreMap[filters.genre!]);
+        }
+
+        // 무료 필터
+        if (filters.freeOnly) {
+            events = events.filter((e) => {
+                if (!e.price) return false;
+                const price = e.price.toLowerCase();
+                return price === "무료" || price === "free" || price.includes("무료");
+            });
         }
 
         // 기간 필터

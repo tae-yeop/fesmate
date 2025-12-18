@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FesMate
 
-## Getting Started
+공연/전시/페스티벌 정보를 한 곳에 모으는 "행사 허브" 앱
 
-First, run the development server:
+## 기술 스택
+
+- **Framework:** Next.js 16 (App Router)
+- **Language:** TypeScript 5
+- **UI:** React 19, Tailwind CSS 4, Lucide Icons
+- **Backend:** Supabase (PostgreSQL + Auth)
+
+## 설치 및 실행
 
 ```bash
+# 의존성 설치
+npm install
+
+# 개발 서버 실행
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# 빌드
+npm run build
+
+# 프로덕션 실행
+npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 환경 변수
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+`.env.local` 파일 생성:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
 
-## Learn More
+## 프로젝트 구조
 
-To learn more about Next.js, take a look at the following resources:
+```
+src/
+├── app/                    # Next.js App Router 페이지
+├── components/             # React 컴포넌트
+├── lib/                    # 유틸리티, 컨텍스트
+└── types/                  # TypeScript 타입 정의
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 문서
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [CLAUDE.md](./CLAUDE.md) - 프로젝트 상세 가이드
+- [docs/TODO.md](./docs/TODO.md) - 개발 진행 현황
