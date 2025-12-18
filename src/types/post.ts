@@ -68,11 +68,15 @@ export interface Post {
     checkinAt?: Date;   // 체크인 시각 (숙소)
     maxPeople?: number; // 최대 인원
     currentPeople?: number; // 현재 인원
-    location?: string;  // 장소
+    location?: string;  // 장소 (deprecated, use placeText)
     budget?: string;    // 예산
     price?: string;     // 가격 (양도용)
     rules?: string;     // 규칙
     contactMethod?: string; // 연락 방식
+
+    // 장소 필드 (PRD 6.4.1)
+    placeText?: string;  // 장소명 (예: "올림픽공원 정문")
+    placeHint?: string;  // 보조 힌트 (예: "5호선 올림픽공원역 3번 출구")
 
     // 만료
     expiresAt?: Date;

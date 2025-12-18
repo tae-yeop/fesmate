@@ -15,12 +15,16 @@ import {
     MapPin,
     ThumbsUp,
     AlertTriangle,
+    ExternalLink,
+    Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MOCK_EVENTS, MOCK_USERS, getCommunityPosts } from "@/lib/mock-data";
 import { Post, POST_TYPE_LABELS, PostType } from "@/types/post";
 import { PostComposer } from "@/components/posts/PostComposer";
 import { PostActionMenu } from "@/components/safety";
+import { MapActionSheet } from "@/components/maps";
+import { getDefaultMapApp, openMap } from "@/lib/utils/map-deeplink";
 import { useAuth } from "@/lib/auth-context";
 import { COMMUNITY_STATUS_COLORS } from "@/lib/constants/styles";
 
@@ -44,6 +48,10 @@ export default function CommunityPage() {
     const [selectedEventId, setSelectedEventId] = useState<string>("all");
     const [sortBy, setSortBy] = useState<"time" | "recent" | "expiring">("time");
     const [isComposerOpen, setIsComposerOpen] = useState(false);
+
+    // 지도 액션시트 상태
+    const [mapActionSheetOpen, setMapActionSheetOpen] = useState(false);
+    const [selectedPlace, setSelectedPlace] = useState<{ placeText: string; placeHint?: string } | null>(null);
 
     const categories: Category[] = [
         { key: "companion", label: "동행", icon: Users },
@@ -137,6 +145,25 @@ export default function CommunityPage() {
     const selectedEvent = selectedEventId !== "all"
         ? MOCK_EVENTS.find(e => e.id === selectedEventId)
         : null;
+
+    // 지도 보기 핸들러
+    const handleOpenMap = (placeText: string, placeHint?: string) => {
+        const defaultApp = getDefaultMapApp();
+        // 기본 지도앱이 설정되어 있으면 바로 열기
+        if (defaultApp && localStorage.getItem("fesmate_default_map_app")) {
+            openMap(defaultApp, placeText, placeHint);
+        } else {
+            // 설정 안 되어 있으면 액션시트 표시
+            setSelectedPlace({ placeText, placeHint });
+            setMapActionSheetOpen(true);
+        }
+    };
+
+    // 지도 설정 변경 핸들러 (항상 액션시트 열기)
+    const handleOpenMapSettings = (placeText: string, placeHint?: string) => {
+        setSelectedPlace({ placeText, placeHint });
+        setMapActionSheetOpen(true);
+    };
 
     return (
         <div className="min-h-screen bg-background pb-20">
@@ -284,10 +311,34 @@ export default function CommunityPage() {
                                             {formatMeetTime(post.departAt)}
                                         </span>
                                     )}
-                                    {post.location && (
+                                    {(post.placeText || post.location) && (
                                         <span className="flex items-center gap-1">
                                             <MapPin className="h-3 w-3" />
-                                            {post.location}
+                                            {post.placeText || post.location}
+                                            {post.placeText && (
+                                                <>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleOpenMap(post.placeText!, post.placeHint);
+                                                        }}
+                                                        className="inline-flex items-center gap-0.5 text-primary hover:underline ml-1"
+                                                    >
+                                                        <ExternalLink className="h-3 w-3" />
+                                                        지도
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleOpenMapSettings(post.placeText!, post.placeHint);
+                                                        }}
+                                                        className="text-muted-foreground hover:text-primary"
+                                                        title="지도앱 설정 변경"
+                                                    >
+                                                        <Settings className="h-3 w-3" />
+                                                    </button>
+                                                </>
+                                            )}
                                         </span>
                                     )}
                                     {post.maxPeople && (
@@ -351,6 +402,19 @@ export default function CommunityPage() {
                 eventTitle={selectedEvent?.title || "행사 선택"}
                 initialType={activeCategory as PostType}
             />
+
+            {/* Map Action Sheet */}
+            {selectedPlace && (
+                <MapActionSheet
+                    isOpen={mapActionSheetOpen}
+                    onClose={() => {
+                        setMapActionSheetOpen(false);
+                        setSelectedPlace(null);
+                    }}
+                    placeText={selectedPlace.placeText}
+                    placeHint={selectedPlace.placeHint}
+                />
+            )}
         </div>
     );
 }

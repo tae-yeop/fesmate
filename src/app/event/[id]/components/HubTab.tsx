@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { ThumbsUp, Users, MessageSquare } from "lucide-react";
+import { ThumbsUp, Users, MessageSquare, MapPin, ExternalLink, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Event, getHubMode, Slot } from "@/types/event";
 import { Post, POST_TYPE_LABELS } from "@/types/post";
 import { formatTime, getRelativeTime } from "@/lib/utils/date-format";
 import { getPostTypeColor, getTrustLevelColor, HUB_MODE_STYLES } from "@/lib/constants/styles";
+import { MapActionSheet } from "@/components/maps";
+import { getDefaultMapApp, openMap } from "@/lib/utils/map-deeplink";
 
 interface HubTabProps {
     event: Event;
@@ -18,6 +20,29 @@ export function HubTab({ event, posts, slots }: HubTabProps) {
     const now = new Date();
     const mode = getHubMode(event, now);
     const [feedFilter, setFeedFilter] = useState<string>("all");
+
+    // 지도 액션시트 상태
+    const [mapActionSheetOpen, setMapActionSheetOpen] = useState(false);
+    const [selectedPlace, setSelectedPlace] = useState<{ placeText: string; placeHint?: string } | null>(null);
+
+    // 지도 보기 핸들러
+    const handleOpenMap = (placeText: string, placeHint?: string) => {
+        const defaultApp = getDefaultMapApp();
+        // 기본 지도앱이 설정되어 있으면 바로 열기
+        if (defaultApp && localStorage.getItem("fesmate_default_map_app")) {
+            openMap(defaultApp, placeText, placeHint);
+        } else {
+            // 설정 안 되어 있으면 액션시트 표시
+            setSelectedPlace({ placeText, placeHint });
+            setMapActionSheetOpen(true);
+        }
+    };
+
+    // 지도 설정 변경 핸들러 (항상 액션시트 열기)
+    const handleOpenMapSettings = (placeText: string, placeHint?: string) => {
+        setSelectedPlace({ placeText, placeHint });
+        setMapActionSheetOpen(true);
+    };
 
     // 포스트 타입별 분류 (메모이제이션)
     const { realTimePosts, communityPosts, reviewPosts } = useMemo(() => ({
@@ -167,7 +192,7 @@ export function HubTab({ event, posts, slots }: HubTabProps) {
                                         ))}
                                     </div>
                                 )}
-                                <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+                                <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                                     <button className="flex items-center gap-1 hover:text-primary">
                                         <ThumbsUp className="h-3 w-3" />
                                         {post.helpfulCount} 도움됨
@@ -186,6 +211,26 @@ export function HubTab({ event, posts, slots }: HubTabProps) {
                                             {post.currentPeople}/{post.maxPeople}명
                                         </span>
                                     )}
+                                    {post.placeText && (
+                                        <span className="flex items-center gap-1">
+                                            <MapPin className="h-3 w-3" />
+                                            {post.placeText}
+                                            <button
+                                                onClick={() => handleOpenMap(post.placeText!, post.placeHint)}
+                                                className="inline-flex items-center gap-0.5 text-primary hover:underline"
+                                            >
+                                                <ExternalLink className="h-3 w-3" />
+                                                지도
+                                            </button>
+                                            <button
+                                                onClick={() => handleOpenMapSettings(post.placeText!, post.placeHint)}
+                                                className="text-muted-foreground hover:text-primary"
+                                                title="지도앱 설정 변경"
+                                            >
+                                                <Settings className="h-3 w-3" />
+                                            </button>
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         ))
@@ -198,6 +243,19 @@ export function HubTab({ event, posts, slots }: HubTabProps) {
                     )}
                 </div>
             </section>
+
+            {/* Map Action Sheet */}
+            {selectedPlace && (
+                <MapActionSheet
+                    isOpen={mapActionSheetOpen}
+                    onClose={() => {
+                        setMapActionSheetOpen(false);
+                        setSelectedPlace(null);
+                    }}
+                    placeText={selectedPlace.placeText}
+                    placeHint={selectedPlace.placeHint}
+                />
+            )}
         </div>
     );
 }

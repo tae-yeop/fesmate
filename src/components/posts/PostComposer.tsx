@@ -75,7 +75,8 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType
 
     // 커뮤니티용 추가 필드
     const [meetTime, setMeetTime] = useState("");
-    const [meetLocation, setMeetLocation] = useState("");
+    const [placeText, setPlaceText] = useState("");      // 장소명
+    const [placeHint, setPlaceHint] = useState("");      // 장소 힌트 (선택)
     const [maxPeople, setMaxPeople] = useState(4);
 
     // 후기용 추가 필드
@@ -104,7 +105,8 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType
             content,
             images,
             meetTime,
-            meetLocation,
+            placeText,
+            placeHint,
             maxPeople,
             rating,
             videoUrl,
@@ -116,7 +118,8 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType
         setContent("");
         setImages([]);
         setMeetTime("");
-        setMeetLocation("");
+        setPlaceText("");
+        setPlaceHint("");
         setMaxPeople(4);
         setRating(5);
         setVideoUrl("");
@@ -124,8 +127,9 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType
 
     const isValid = () => {
         if (!content.trim()) return false;
-        if (selectedOption?.category === "community") {
-            if (!meetTime || !meetLocation) return false;
+        if (selectedOption?.category === "community" && selectedType !== "question") {
+            // 질문 외 커뮤니티 글은 시간과 장소 필수
+            if (!meetTime || !placeText) return false;
         }
         if (selectedType === "video" && !videoUrl.trim()) return false;
         return true;
@@ -172,8 +176,10 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType
                             setContent={setContent}
                             meetTime={meetTime}
                             setMeetTime={setMeetTime}
-                            meetLocation={meetLocation}
-                            setMeetLocation={setMeetLocation}
+                            placeText={placeText}
+                            setPlaceText={setPlaceText}
+                            placeHint={placeHint}
+                            setPlaceHint={setPlaceHint}
                             maxPeople={maxPeople}
                             setMaxPeople={setMaxPeople}
                             rating={rating}
@@ -252,8 +258,10 @@ function ComposeForm({
     setContent,
     meetTime,
     setMeetTime,
-    meetLocation,
-    setMeetLocation,
+    placeText,
+    setPlaceText,
+    placeHint,
+    setPlaceHint,
     maxPeople,
     setMaxPeople,
     rating,
@@ -267,8 +275,10 @@ function ComposeForm({
     setContent: (v: string) => void;
     meetTime: string;
     setMeetTime: (v: string) => void;
-    meetLocation: string;
-    setMeetLocation: (v: string) => void;
+    placeText: string;
+    setPlaceText: (v: string) => void;
+    placeHint: string;
+    setPlaceHint: (v: string) => void;
     maxPeople: number;
     setMaxPeople: (v: number) => void;
     rating: number;
@@ -397,18 +407,28 @@ function ComposeForm({
                             </select>
                         </div>
                     </div>
-                    <div>
-                        <label className="text-sm font-medium mb-2 flex items-center gap-1">
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium flex items-center gap-1">
                             <MapPin className="h-4 w-4" />
                             {type === "taxi" ? "출발 장소" : "만남 장소"}
                         </label>
                         <input
                             type="text"
-                            value={meetLocation}
-                            onChange={(e) => setMeetLocation(e.target.value)}
+                            value={placeText}
+                            onChange={(e) => setPlaceText(e.target.value)}
                             placeholder="예: 올림픽공원 정문"
                             className="w-full rounded-lg border px-3 py-2 text-sm"
                         />
+                        <input
+                            type="text"
+                            value={placeHint}
+                            onChange={(e) => setPlaceHint(e.target.value)}
+                            placeholder="힌트 (선택): 예: 5호선 올림픽공원역 3번 출구"
+                            className="w-full rounded-lg border px-3 py-2 text-sm text-muted-foreground"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            장소 정보는 다른 분들이 지도에서 검색할 때 사용됩니다
+                        </p>
                     </div>
                 </>
             )}
