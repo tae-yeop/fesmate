@@ -227,10 +227,20 @@
 ## Phase 7: 인증 시스템 [P0]
 
 ### 7.1 소셜 로그인
-- [~] 로그인 페이지 UI (기본 완료)
-- [ ] 카카오 OAuth 연동 (Supabase Auth)
-- [ ] 네이버 OAuth 연동
-- [ ] 구글 OAuth 연동
+- [x] 로그인 페이지 UI (기본 완료)
+- [x] Google OAuth 연동 (Supabase Auth) ✅ 동작함
+- [~] 카카오 OAuth 연동 (Supabase Auth) - **보류**
+
+  **카카오 OAuth 이슈 (KOE205):**
+  - 문제: `account_email` 권한 없음 (사업자 인증 필요)
+  - 시도한 것:
+    1. Supabase "Allow users without an email" 활성화
+    2. Supabase "Confirm email" 비활성화
+    3. 카카오 동의항목 설정 (profile_nickname, profile_image 필수동의)
+    4. 카카오 리다이렉트 URI 설정
+    5. 코드에서 scopes 명시적 지정 (`profile_nickname profile_image`)
+  - 해결 방안: 사업자등록 후 account_email 권한 신청 또는 추가 디버깅 필요
+- [ ] 네이버 OAuth 연동 (Supabase 미지원, 보류)
 
 ### 7.2 권한 관리
 - [ ] 비로그인: 조회만 가능
@@ -245,18 +255,15 @@
 ## Phase 8: 알림 시스템 [P0]
 
 ### 8.1 인앱 알림함
-- [ ] 알림 목록 UI
-- [ ] 읽음/안읽음 상태
-- [ ] 딥링크 라우팅
+- [x] 알림 목록 UI
+- [x] 읽음/안읽음 상태
+- [x] 딥링크 라우팅
+- [x] Header 알림 배지 (읽지 않은 알림 수)
 
 ### 8.2 알림 이벤트 (MVP)
-- [ ] ticket_open_reminder: 예매 오픈 N분 전
-- [ ] event_start_reminder: 행사 시작 N시간 전
-- [ ] official_notice_published: 새 공지
-- [ ] hub_post_replied: 내 글에 댓글
-- [ ] community_post_replied: 내 커뮤니티 글에 댓글
-- [ ] event_time_changed: 일정 변경
-- [ ] event_cancelled: 행사 취소
+- [x] 알림 타입 정의 (12개 타입)
+- [x] Mock 알림 데이터
+- [ ] 실제 알림 트리거 (백엔드 연동 필요)
 
 ### 8.3 알림 정책
 - [ ] Quiet Hours: 22:00–08:00
@@ -300,18 +307,26 @@
 ## Phase 10: 안전/정책 [P0]
 
 ### 10.1 신고
-- [ ] 신고 사유: 스팸/사기/욕설/혐오/성희롱/개인정보/불법/기타
-- [ ] 처리 상태: RECEIVED → IN_REVIEW → ACTION_TAKEN/NO_ACTION
+- [x] 신고 사유: 스팸/사기/욕설/혐오/성희롱/개인정보/불법/기타
+- [x] 신고 타입 정의 (report.ts)
+- [x] 신고 모달 UI (ReportModal)
+- [x] 처리 상태: received → in_review → action_taken/no_action
 
 ### 10.2 자동 숨김
 - [ ] 신고 누적 시 임시 숨김/블러
 - [ ] "검토 중" 표시
 
 ### 10.3 차단
-- [ ] 상호 글/댓글/프로필 숨김
-- [ ] 알림/멘션 차단
+- [x] 차단 Context (BlockProvider)
+- [x] 차단 확인 모달 (BlockConfirmModal)
+- [x] 상호 글/댓글/프로필 숨김 (클라이언트)
+- [ ] 알림/멘션 차단 (백엔드 연동 필요)
 
-### 10.4 레이트리밋
+### 10.4 포스트 액션 메뉴
+- [x] PostActionMenu 컴포넌트
+- [x] 커뮤니티 페이지 연결
+
+### 10.5 레이트리밋
 - [ ] 신규 계정 글/댓글 빈도 제한
 - [ ] 동일 내용 반복 제한
 
@@ -417,10 +432,10 @@ notifications
 | 4 | 글 작성 시스템 | P0 | [x] 완료 |
 | 5 | 커뮤니티 | P0 | [x] 완료 |
 | 6 | MyFes | P0 | [x] 완료 |
-| 7 | 인증 시스템 | P0 | [~] UI만 완료 |
-| 8 | 알림 시스템 | P0 | [ ] 미착수 |
+| 7 | 인증 시스템 | P0 | [~] Google 완료, 카카오 보류 |
+| 8 | 알림 시스템 | P0 | [x] 완료 (UI 구현) |
 | 9 | Dev 메뉴 | P0 | [x] 완료 (간소화) |
-| 10 | 안전/정책 | P0 | [ ] 미착수 |
+| 10 | 안전/정책 | P0 | [x] 완료 (신고/차단 UI) |
 | 11 | 품질/고도화 | P1 | [ ] 미착수 |
 | 12 | Admin 도구 | P2 | [ ] 미착수 |
 

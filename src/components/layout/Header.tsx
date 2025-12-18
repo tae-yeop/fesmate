@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Search, Bell, User, Home, Users, CalendarHeart } from "lucide-react";
+import { Search, Bell, User, Home, Users, CalendarHeart, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
+import { useState } from "react";
+import { getUnreadNotificationCount } from "@/lib/mock-data";
 
 /**
  * 헤더 컴포넌트 - PRD v0.5 기준
@@ -12,6 +15,11 @@ import { cn } from "@/lib/utils";
  */
 export function Header() {
     const pathname = usePathname();
+    const { user, isLoading, signOut } = useAuth();
+    const [showMenu, setShowMenu] = useState(false);
+
+    // 읽지 않은 알림 수 (실제로는 user?.id 사용)
+    const unreadCount = getUnreadNotificationCount();
 
     const navItems = [
         { title: "홈", href: "/", icon: Home },
@@ -19,6 +27,11 @@ export function Header() {
         { title: "커뮤니티", href: "/community", icon: Users },
         { title: "MyFes", href: "/myfes", icon: CalendarHeart },
     ];
+
+    const handleSignOut = async () => {
+        await signOut();
+        setShowMenu(false);
+    };
 
     return (
         <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -69,18 +82,73 @@ export function Header() {
                         aria-label="알림"
                     >
                         <Bell className="h-5 w-5" />
-                        {/* 안읽은 알림 표시 (추후 조건부 렌더링) */}
-                        {/* <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" /> */}
+                        {unreadCount > 0 && (
+                            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                                {unreadCount > 99 ? "99+" : unreadCount}
+                            </span>
+                        )}
                     </Link>
 
                     {/* 프로필/로그인 */}
-                    <Link
-                        href="/login"
-                        className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                        aria-label="프로필"
-                    >
-                        <User className="h-5 w-5" />
-                    </Link>
+                    {isLoading ? (
+                        <div className="h-9 w-9 rounded-full bg-muted animate-pulse" />
+                    ) : user ? (
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowMenu(!showMenu)}
+                                className="flex h-9 w-9 items-center justify-center rounded-full overflow-hidden border-2 border-primary/20 hover:border-primary transition-colors"
+                                aria-label="프로필 메뉴"
+                            >
+                                {user.user_metadata?.avatar_url ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                        src={user.user_metadata.avatar_url}
+                                        alt="프로필"
+                                        className="h-full w-full object-cover"
+                                    />
+                                ) : (
+                                    <div className="h-full w-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold">
+                                        {user.user_metadata?.name?.[0] || user.email?.[0]?.toUpperCase() || "U"}
+                                    </div>
+                                )}
+                            </button>
+
+                            {/* 드롭다운 메뉴 */}
+                            {showMenu && (
+                                <>
+                                    <div
+                                        className="fixed inset-0 z-40"
+                                        onClick={() => setShowMenu(false)}
+                                    />
+                                    <div className="absolute right-0 top-12 z-50 w-48 rounded-lg border bg-card shadow-lg py-1">
+                                        <div className="px-3 py-2 border-b">
+                                            <p className="text-sm font-medium truncate">
+                                                {user.user_metadata?.name || user.user_metadata?.full_name || "사용자"}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground truncate">
+                                                {user.email}
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={handleSignOut}
+                                            className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                        >
+                                            <LogOut className="h-4 w-4" />
+                                            로그아웃
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    ) : (
+                        <Link
+                            href="/login"
+                            className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                            aria-label="로그인"
+                        >
+                            <User className="h-5 w-5" />
+                        </Link>
+                    )}
                 </div>
             </div>
         </header>

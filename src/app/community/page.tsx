@@ -20,6 +20,8 @@ import { cn } from "@/lib/utils";
 import { MOCK_EVENTS, MOCK_USERS, getCommunityPosts } from "@/lib/mock-data";
 import { Post, POST_TYPE_LABELS, PostType } from "@/types/post";
 import { PostComposer } from "@/components/posts/PostComposer";
+import { PostActionMenu } from "@/components/safety";
+import { useAuth } from "@/lib/auth-context";
 
 type CategoryType = "companion" | "taxi" | "meal" | "lodge" | "transfer" | "tip" | "question";
 
@@ -36,6 +38,7 @@ interface Category {
  * - 자동 만료 표시
  */
 export default function CommunityPage() {
+    const { user } = useAuth();
     const [activeCategory, setActiveCategory] = useState<CategoryType>("companion");
     const [selectedEventId, setSelectedEventId] = useState<string>("all");
     const [sortBy, setSortBy] = useState<"time" | "recent" | "expiring">("time");
@@ -240,7 +243,22 @@ export default function CommunityPage() {
                                             {POST_TYPE_LABELS[post.type as PostType] || post.type}
                                         </span>
                                     </div>
-                                    <span className="text-xs text-muted-foreground">{getRelativeTime(post.createdAt)}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-muted-foreground">{getRelativeTime(post.createdAt)}</span>
+                                        <PostActionMenu
+                                            targetType="post"
+                                            targetId={post.id}
+                                            targetUserId={post.userId}
+                                            targetUserName={getUserNickname(post.userId)}
+                                            isOwner={user?.id === post.userId}
+                                            onShare={() => {
+                                                // 공유 기능 (추후 구현)
+                                                if (navigator.share) {
+                                                    navigator.share({ title: post.content, url: window.location.href });
+                                                }
+                                            }}
+                                        />
+                                    </div>
                                 </div>
 
                                 {/* 제목/내용 */}

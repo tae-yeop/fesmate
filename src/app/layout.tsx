@@ -5,6 +5,8 @@ import { Header } from "@/components/layout/Header";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { DevProvider } from "@/lib/dev-context";
 import { DevPanel } from "@/components/dev/DevPanel";
+import { AuthProvider } from "@/lib/auth-context";
+import { BlockProvider } from "@/lib/block-context";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -32,14 +34,18 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${notoSansKr.variable} antialiased min-h-screen bg-background font-sans`}
       >
-        <DevProvider>
-          <div className="relative flex min-h-screen flex-col">
-            <Header />
-            <main className="flex-1 pb-16 md:pb-0">{children}</main>
-            <MobileNav />
-            <DevPanel />
-          </div>
-        </DevProvider>
+        <AuthProvider>
+          <BlockProvider>
+            <DevProvider>
+              <div className="relative flex min-h-screen flex-col">
+                <Header />
+                <main className="flex-1 pb-16 md:pb-0">{children}</main>
+                <MobileNav />
+                <DevPanel />
+              </div>
+            </DevProvider>
+          </BlockProvider>
+        </AuthProvider>
       </body>
     </html>
   );

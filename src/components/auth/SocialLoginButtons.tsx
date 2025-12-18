@@ -8,11 +8,18 @@ export function SocialLoginButtons() {
     const supabase = createClient();
 
     const handleLogin = async (provider: Provider) => {
+        const options: { redirectTo: string; scopes?: string } = {
+            redirectTo: `${location.origin}/auth/callback`,
+        };
+
+        // 카카오는 account_email 권한이 없으므로 scope 명시
+        if (provider === "kakao") {
+            options.scopes = "profile_nickname profile_image";
+        }
+
         await supabase.auth.signInWithOAuth({
             provider,
-            options: {
-                redirectTo: `${location.origin}/auth/callback`,
-            },
+            options,
         });
     };
 

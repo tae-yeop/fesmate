@@ -1,5 +1,6 @@
 import { Event, Slot } from "@/types/event";
 import { Post } from "@/types/post";
+import { Notification } from "@/types/notification";
 
 /**
  * Mock 행사 데이터 - PRD v0.5 기준
@@ -491,4 +492,122 @@ export function getCommunityPosts(category?: string, eventId?: string): Post[] {
     }
 
     return posts;
+}
+
+/**
+ * Mock 알림 데이터
+ */
+export const MOCK_NOTIFICATIONS: Notification[] = [
+    // 읽지 않은 알림들
+    {
+        id: "notif1",
+        userId: "user1",
+        type: "event_start_reminder",
+        eventId: "e2",
+        title: "Seoul Jazz Festival 2025",
+        body: "행사가 내일 시작됩니다! 준비되셨나요?",
+        deepLink: "/event/e2",
+        isRead: false,
+        createdAt: addDays(now, -0.1),
+    },
+    {
+        id: "notif2",
+        userId: "user1",
+        type: "hub_post_replied",
+        eventId: "e2",
+        postId: "post3",
+        title: "내 동행 글에 댓글이 달렸어요",
+        body: "재즈매니아님: 저도 같이 가고 싶어요!",
+        deepLink: "/event/e2?tab=hub",
+        isRead: false,
+        createdAt: addDays(now, -0.2),
+    },
+    {
+        id: "notif3",
+        userId: "user1",
+        type: "official_notice_published",
+        eventId: "e2",
+        title: "공식 공지가 등록되었습니다",
+        body: "주차장 이용 안내 및 셔틀버스 운행 시간표",
+        deepLink: "/event/e2?tab=hub",
+        isRead: false,
+        createdAt: addDays(now, -0.5),
+    },
+    {
+        id: "notif4",
+        userId: "user1",
+        type: "post_expiring_soon",
+        postId: "post3",
+        title: "동행 모집글이 곧 마감됩니다",
+        body: "2시간 후 자동 마감됩니다. 모집 상태를 확인해주세요.",
+        deepLink: "/community",
+        isRead: false,
+        createdAt: addDays(now, -0.3),
+    },
+
+    // 읽은 알림들
+    {
+        id: "notif5",
+        userId: "user1",
+        type: "ticket_open_reminder",
+        eventId: "55948",
+        title: "THE MARCHING OF AG! 예매 오픈 30분 전",
+        body: "예매 오픈이 곧 시작됩니다. 준비하세요!",
+        deepLink: "/event/55948",
+        isRead: true,
+        createdAt: addDays(now, -1),
+    },
+    {
+        id: "notif6",
+        userId: "user1",
+        type: "community_post_replied",
+        postId: "post7",
+        title: "양도글에 문의가 왔어요",
+        body: "인디팬님: 아직 양도 가능한가요?",
+        deepLink: "/community",
+        isRead: true,
+        createdAt: addDays(now, -1.5),
+    },
+    {
+        id: "notif7",
+        userId: "user1",
+        type: "event_time_changed",
+        eventId: "e5",
+        title: "연기된 공연 일정이 변경되었습니다",
+        body: "새로운 일정: 2025년 2월 15일",
+        deepLink: "/event/e5",
+        isRead: true,
+        createdAt: addDays(now, -3),
+    },
+    {
+        id: "notif8",
+        userId: "user1",
+        type: "event_cancelled",
+        eventId: "e4",
+        title: "취소된 콘서트 - 행사 취소 안내",
+        body: "해당 행사가 취소되었습니다. 예매처에서 환불을 진행해주세요.",
+        deepLink: "/event/e4",
+        isRead: true,
+        createdAt: addDays(now, -5),
+    },
+];
+
+/**
+ * 헬퍼: 알림 목록 가져오기
+ */
+export function getNotifications(userId?: string): Notification[] {
+    if (userId) {
+        return MOCK_NOTIFICATIONS.filter(n => n.userId === userId);
+    }
+    return MOCK_NOTIFICATIONS;
+}
+
+/**
+ * 헬퍼: 읽지 않은 알림 개수
+ */
+export function getUnreadNotificationCount(userId?: string): number {
+    const notifications = userId
+        ? MOCK_NOTIFICATIONS.filter(n => n.userId === userId)
+        : MOCK_NOTIFICATIONS;
+    return notifications.filter(n => !n.isRead).length;
 }
