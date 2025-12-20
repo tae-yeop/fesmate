@@ -81,6 +81,9 @@ export interface Post {
     // 만료
     expiresAt?: Date;
 
+    // 끌어올리기 (Bump)
+    lastBumpedAt?: Date;  // 마지막 끌어올리기 시간 (24시간 쿨다운)
+
     // 공식 공지용
     isPinned?: boolean;
     isUrgent?: boolean;
@@ -202,3 +205,41 @@ export const POST_TYPE_CATEGORIES = {
     community: ["companion", "taxi", "meal", "lodge", "transfer", "tip", "question"] as CommunityPostType[],
     record: ["review", "video"] as RecordPostType[],
 };
+
+/** 끌어올리기 쿨다운 시간 (밀리초) - 24시간 */
+export const BUMP_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * 끌어올리기 가능 여부 확인
+ * @returns { canBump: boolean, remainingMs: number }
+ */
+export function checkBumpAvailability(post: Post, now: Date = new Date()): {
+    canBump: boolean;
+    remainingMs: number;
+    remainingText: string;
+} {
+    if (!post.lastBumpedAt) {
+        return { canBump: true, remainingMs: 0, remainingText: "" };
+    }
+
+    const lastBumped = new Date(post.lastBumpedAt);
+    const elapsed = now.getTime() - lastBumped.getTime();
+    const remainingMs = Math.max(0, BUMP_COOLDOWN_MS - elapsed);
+
+    if (remainingMs === 0) {
+        return { canBump: true, remainingMs: 0, remainingText: "" };
+    }
+
+    // 남은 시간 텍스트 생성
+    const hours = Math.floor(remainingMs / (60 * 60 * 1000));
+    const minutes = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+
+    let remainingText = "";
+    if (hours > 0) {
+        remainingText = `${hours}시간 ${minutes}분 후 가능`;
+    } else {
+        remainingText = `${minutes}분 후 가능`;
+    }
+
+    return { canBump: false, remainingMs, remainingText };
+}

@@ -22,12 +22,26 @@ export interface Venue {
     lng?: number;
 }
 
+/** 아티스트 소셜 링크 */
+export interface ArtistSocialLink {
+    type: "instagram" | "youtube" | "spotify" | "twitter" | "website";
+    url: string;
+}
+
 /** 아티스트 */
 export interface Artist {
     id: string;
     name: string;
     image?: string;
     genre?: string;
+    /** 호응법/팬덤 문화 */
+    fanchant?: string;
+    /** 응원봉 색상 */
+    lightstickColor?: string;
+    /** 소셜 링크 */
+    socialLinks?: ArtistSocialLink[];
+    /** 대표곡 */
+    popularSongs?: string[];
 }
 
 /** 타임테이블 슬롯 */
@@ -52,6 +66,13 @@ export interface EventStats {
     reviewCount: number;     // 리뷰 수
 }
 
+/** 예매처 링크 */
+export interface TicketLink {
+    name: string;      // 예매처 이름 (예: "인터파크 티켓", "YES24")
+    url: string;       // 예매 URL
+    logo?: string;     // 예매처 로고 URL (선택)
+}
+
 /** 행사(Event) - 최상위 엔터티 */
 export interface Event {
     id: string;
@@ -59,7 +80,7 @@ export interface Event {
 
     // 일정
     startAt: Date;
-    endAt: Date;
+    endAt?: Date;  // 종료 시간 미정인 경우 null/undefined
     timezone: string; // 기본 "Asia/Seoul"
 
     // 장소
@@ -77,6 +98,9 @@ export interface Event {
     price?: string;
     description?: string;
     ageRestriction?: string;
+
+    // 예매 링크
+    ticketLinks?: TicketLink[];
 
     // 관계
     artists?: Artist[];
@@ -97,6 +121,7 @@ export interface Event {
  * LIVE/RECAP 모드 계산 함수
  * - LIVE: 현재 >= (startAt - 24h) AND 현재 < (endAt + 6h)
  * - RECAP: 현재 >= (endAt + 6h)
+ * - endAt 누락 시: startAt 기준 24시간 동안 LIVE, 이후 RECAP
  */
 export function getHubMode(event: Event, now: Date = new Date()): "LIVE" | "RECAP" {
     // override가 AUTO가 아니면 override 값 사용
@@ -105,9 +130,13 @@ export function getHubMode(event: Event, now: Date = new Date()): "LIVE" | "RECA
     }
 
     const startAt = new Date(event.startAt);
-    const endAt = new Date(event.endAt);
-
     const liveStart = new Date(startAt.getTime() - 24 * 60 * 60 * 1000); // startAt - 24h
+
+    // endAt이 없는 경우: startAt + 24시간을 기본 종료 시간으로 사용
+    const endAt = event.endAt
+        ? new Date(event.endAt)
+        : new Date(startAt.getTime() + 24 * 60 * 60 * 1000); // startAt + 24h
+
     const liveEnd = new Date(endAt.getTime() + 6 * 60 * 60 * 1000);      // endAt + 6h
 
     if (now >= liveStart && now < liveEnd) {
