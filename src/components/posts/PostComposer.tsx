@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
     X,
     ChevronLeft,
@@ -21,9 +22,12 @@ import {
     HelpCircle,
     Camera,
     Send,
+    LogIn,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PostType, POST_TYPE_LABELS } from "@/types/post";
+import { useAuth } from "@/lib/auth-context";
+import { useDevContext } from "@/lib/dev-context";
 
 interface PostComposerProps {
     isOpen: boolean;
@@ -31,6 +35,26 @@ interface PostComposerProps {
     eventId: string;
     eventTitle: string;
     initialType?: PostType;
+    /** 수정 모드: 기존 글 데이터 */
+    editPost?: {
+        id: string;
+        content: string;
+        maxPeople?: number;
+        price?: string;
+        placeText?: string;
+        placeHint?: string;
+        meetTime?: string;  // ISO string format
+        expiresAt?: Date;
+    };
+    /** 수정 완료 콜백 */
+    onEditComplete?: (postId: string, updatedData: {
+        content: string;
+        maxPeople?: number;
+        placeText?: string;
+        placeHint?: string;
+        meetTime?: string;
+        expiresAt?: Date;
+    }) => void;
 }
 
 type CategoryType = "realtime" | "community" | "review";
@@ -63,27 +87,85 @@ const POST_TYPE_OPTIONS: PostTypeOption[] = [
 ];
 
 /**
- * 글 작성 모달 - PRD v0.5 기준
+ * 글 작성/수정 모달 - PRD v0.5 기준
  * - 글 타입 선택
  * - 템플릿 기반 작성
+ * - 비로그인 시 로그인 유도
+ * - 수정 모드 지원
  */
-export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType }: PostComposerProps) {
-    const [step, setStep] = useState<"select" | "compose">(initialType ? "compose" : "select");
+export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType, editPost, onEditComplete }: PostComposerProps) {
+    const { user, isLoading } = useAuth();
+    const { isLoggedIn: isDevLoggedIn } = useDevContext();
+    const isEditMode = !!editPost;
+
+    // 실제 로그인 또는 Dev 모드 로그인 상태 확인
+    const isLoggedIn = !!user || isDevLoggedIn;
+
+    const [step, setStep] = useState<"select" | "compose">(initialType || isEditMode ? "compose" : "select");
     const [selectedType, setSelectedType] = useState<PostType | null>(initialType || null);
-    const [content, setContent] = useState("");
+    const [content, setContent] = useState(editPost?.content || "");
     const [images, setImages] = useState<string[]>([]);
 
     // 커뮤니티용 추가 필드
-    const [meetTime, setMeetTime] = useState("");
-    const [placeText, setPlaceText] = useState("");      // 장소명
-    const [placeHint, setPlaceHint] = useState("");      // 장소 힌트 (선택)
-    const [maxPeople, setMaxPeople] = useState(4);
+    const [meetTime, setMeetTime] = useState(editPost?.meetTime || "");
+    const [placeText, setPlaceText] = useState(editPost?.placeText || "");      // 장소명
+    const [placeHint, setPlaceHint] = useState(editPost?.placeHint || "");      // 장소 힌트 (선택)
+    const [maxPeople, setMaxPeople] = useState(editPost?.maxPeople || 4);
 
     // 후기용 추가 필드
     const [rating, setRating] = useState(5);
     const [videoUrl, setVideoUrl] = useState("");
 
     if (!isOpen) return null;
+
+    // 비로그인 상태면 로그인 유도 화면 표시 (Dev 모드 제외)
+    if (!isLoading && !isLoggedIn) {
+        return (
+            <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+                {/* 백드롭 */}
+                <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+
+                {/* 모달 */}
+                <div className="relative w-full max-w-md bg-background rounded-t-2xl sm:rounded-2xl overflow-hidden">
+                    {/* 헤더 */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b">
+                        <div className="w-7" />
+                        <h2 className="font-bold">글 작성</h2>
+                        <button onClick={onClose} className="p-1 hover:bg-accent rounded">
+                            <X className="h-5 w-5" />
+                        </button>
+                    </div>
+
+                    {/* 로그인 유도 */}
+                    <div className="p-8 text-center">
+                        <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                            <LogIn className="h-8 w-8 text-primary" />
+                        </div>
+                        <h3 className="text-lg font-bold mb-2">로그인이 필요해요</h3>
+                        <p className="text-sm text-muted-foreground mb-6">
+                            글을 작성하려면 로그인해주세요.<br />
+                            간편하게 소셜 로그인으로 시작할 수 있어요.
+                        </p>
+                        <div className="space-y-2">
+                            <Link
+                                href="/login"
+                                onClick={onClose}
+                                className="block w-full bg-primary text-primary-foreground rounded-full py-3 font-medium hover:opacity-90 transition-opacity"
+                            >
+                                로그인하기
+                            </Link>
+                            <button
+                                onClick={onClose}
+                                className="w-full text-muted-foreground py-2 text-sm hover:text-foreground"
+                            >
+                                나중에 할게요
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     const selectedOption = POST_TYPE_OPTIONS.find((o) => o.type === selectedType);
 
@@ -98,19 +180,30 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType
     };
 
     const handleSubmit = () => {
-        // TODO: 실제 제출 로직
-        console.log({
-            eventId,
-            type: selectedType,
-            content,
-            images,
-            meetTime,
-            placeText,
-            placeHint,
-            maxPeople,
-            rating,
-            videoUrl,
-        });
+        if (isEditMode && editPost && onEditComplete) {
+            // 수정 모드: 콜백 호출
+            onEditComplete(editPost.id, {
+                content,
+                maxPeople,
+                placeText,
+                placeHint,
+                meetTime,
+            });
+        } else {
+            // 신규 작성 모드
+            console.log({
+                eventId,
+                type: selectedType,
+                content,
+                images,
+                meetTime,
+                placeText,
+                placeHint,
+                maxPeople,
+                rating,
+                videoUrl,
+            });
+        }
         onClose();
         // 폼 리셋
         setStep("select");
@@ -144,7 +237,7 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType
             <div className="relative w-full max-w-lg bg-background rounded-t-2xl sm:rounded-2xl max-h-[90vh] overflow-hidden flex flex-col">
                 {/* 헤더 */}
                 <div className="flex items-center justify-between px-4 py-3 border-b">
-                    {step === "compose" ? (
+                    {step === "compose" && !isEditMode ? (
                         <button onClick={handleBack} className="p-1 hover:bg-accent rounded">
                             <ChevronLeft className="h-5 w-5" />
                         </button>
@@ -152,7 +245,11 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType
                         <div className="w-7" />
                     )}
                     <h2 className="font-bold">
-                        {step === "select" ? "글 작성" : selectedOption?.label}
+                        {isEditMode
+                            ? "글 수정"
+                            : step === "select"
+                                ? "글 작성"
+                                : selectedOption?.label}
                     </h2>
                     <button onClick={onClose} className="p-1 hover:bg-accent rounded">
                         <X className="h-5 w-5" />
@@ -202,7 +299,7 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType
                             className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-full text-sm font-medium disabled:opacity-50"
                         >
                             <Send className="h-4 w-4" />
-                            올리기
+                            {isEditMode ? "수정하기" : "올리기"}
                         </button>
                     </div>
                 )}

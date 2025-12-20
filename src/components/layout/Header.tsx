@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Search, Bell, User, Home, Users, CalendarHeart, LogOut } from "lucide-react";
+import { Search, Bell, User, Home, Users, CalendarHeart, LogOut, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import { useDevContext } from "@/lib/dev-context";
+import { useUserProfile } from "@/lib/user-profile-context";
 import { useState } from "react";
 import { getUnreadNotificationCount } from "@/lib/mock-data";
 
@@ -16,6 +18,8 @@ import { getUnreadNotificationCount } from "@/lib/mock-data";
 export function Header() {
     const pathname = usePathname();
     const { user, isLoading, signOut } = useAuth();
+    const { isDevMode } = useDevContext();
+    const { myProfile, isLoggedIn } = useUserProfile();
     const [showMenu, setShowMenu] = useState(false);
 
     // 읽지 않은 알림 수 (실제로는 user?.id 사용)
@@ -34,7 +38,10 @@ export function Header() {
     };
 
     return (
-        <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <header className={cn(
+            "sticky z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60",
+            isDevMode ? "top-6" : "top-0"
+        )}>
             <div className="container flex h-14 items-center justify-between px-4">
                 {/* 로고 */}
                 <Link href="/" className="flex items-center space-x-2">
@@ -93,6 +100,7 @@ export function Header() {
                     {isLoading ? (
                         <div className="h-9 w-9 rounded-full bg-muted animate-pulse" />
                     ) : user ? (
+                        // OAuth 로그인 사용자
                         <div className="relative">
                             <button
                                 onClick={() => setShowMenu(!showMenu)}
@@ -129,6 +137,14 @@ export function Header() {
                                                 {user.email}
                                             </p>
                                         </div>
+                                        <Link
+                                            href="/profile"
+                                            onClick={() => setShowMenu(false)}
+                                            className="w-full px-3 py-2 text-left text-sm hover:bg-muted flex items-center gap-2"
+                                        >
+                                            <Settings className="h-4 w-4" />
+                                            내 프로필
+                                        </Link>
                                         <button
                                             onClick={handleSignOut}
                                             className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
@@ -140,11 +156,21 @@ export function Header() {
                                 </>
                             )}
                         </div>
-                    ) : (
+                    ) : isLoggedIn && myProfile ? (
+                        // Dev 모드 로그인 사용자
                         <Link
-                            href="/login"
+                            href="/profile"
+                            className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-pink-500/20 text-xl border border-primary/20 hover:border-primary/40 transition-colors"
+                            aria-label="프로필"
+                        >
+                            {myProfile.avatar}
+                        </Link>
+                    ) : (
+                        // 비로그인 상태
+                        <Link
+                            href="/profile"
                             className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                            aria-label="로그인"
+                            aria-label="프로필"
                         >
                             <User className="h-5 w-5" />
                         </Link>

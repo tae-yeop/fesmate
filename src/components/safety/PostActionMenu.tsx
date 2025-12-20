@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { MoreHorizontal, Flag, Ban, Share, Trash2, Edit } from "lucide-react";
+import Link from "next/link";
+import { MoreHorizontal, Flag, Ban, Share, Trash2, Edit, X, LogIn } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ReportModal } from "./ReportModal";
 import { BlockConfirmModal } from "./BlockConfirmModal";
@@ -39,8 +40,9 @@ export function PostActionMenu({
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isReportOpen, setIsReportOpen] = useState(false);
     const [isBlockOpen, setIsBlockOpen] = useState(false);
+    const [isLoginPromptOpen, setIsLoginPromptOpen] = useState(false);
 
-    const { blockUser, isBlocked } = useBlock();
+    const { blockUser, isBlocked, canBlock } = useBlock();
     const userIsBlocked = isBlocked(targetUserId);
 
     const handleReportSubmit = (reason: ReportReason, detail?: string) => {
@@ -128,7 +130,11 @@ export function PostActionMenu({
                                         <button
                                             onClick={() => {
                                                 setIsMenuOpen(false);
-                                                setIsBlockOpen(true);
+                                                if (canBlock) {
+                                                    setIsBlockOpen(true);
+                                                } else {
+                                                    setIsLoginPromptOpen(true);
+                                                }
                                             }}
                                             className="w-full px-3 py-2 text-left hover:bg-muted flex items-center gap-2 text-red-600"
                                         >
@@ -173,6 +179,37 @@ export function PostActionMenu({
                 userId={targetUserId}
                 onConfirm={handleBlockConfirm}
             />
+
+            {/* 로그인 유도 모달 */}
+            {isLoginPromptOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center">
+                    <div
+                        className="absolute inset-0 bg-black/60"
+                        onClick={() => setIsLoginPromptOpen(false)}
+                    />
+                    <div className="relative z-50 w-full max-w-sm mx-4 bg-card rounded-2xl shadow-xl p-6 text-center">
+                        <button
+                            onClick={() => setIsLoginPromptOpen(false)}
+                            className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
+                        <Ban className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+                        <h3 className="text-lg font-bold mb-2">로그인이 필요해요</h3>
+                        <p className="text-sm text-muted-foreground mb-4">
+                            사용자를 차단하려면 먼저 로그인해주세요.
+                        </p>
+                        <Link
+                            href="/login"
+                            onClick={() => setIsLoginPromptOpen(false)}
+                            className="inline-flex items-center justify-center gap-2 w-full py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
+                        >
+                            <LogIn className="h-4 w-4" />
+                            로그인하기
+                        </Link>
+                    </div>
+                </div>
+            )}
         </>
     );
 }
