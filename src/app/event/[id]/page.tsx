@@ -1,8 +1,8 @@
 "use client";
 
-import { notFound } from "next/navigation";
+import { notFound, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { use, useState, useMemo } from "react";
+import { use, useState, useMemo, useCallback, useEffect } from "react";
 import {
     Calendar,
     MapPin,
@@ -11,13 +11,16 @@ import {
     Share2,
     ChevronLeft,
     Plus,
+    Check,
 } from "lucide-react";
 import { MOCK_EVENTS, getPostsByEventId, getSlotsByEventId } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
-import { getHubMode } from "@/types/event";
+import { getHubMode, HubMode } from "@/types/event";
 import { PostComposer } from "@/components/posts/PostComposer";
 import { formatDateTime } from "@/lib/utils/date-format";
 import { OverviewTab, HubTab, TimetableTab, ArtistsTab } from "./components";
+import { useWishlist } from "@/lib/wishlist-context";
+import { useDevContext } from "@/lib/dev-context";
 
 interface PageProps {
     params: Promise<{ id: string }>;
@@ -32,23 +35,105 @@ type TabType = "overview" | "hub" | "timetable" | "artists";
  */
 export default function EventDetailPage({ params }: PageProps) {
     const { id } = use(params);
+    const searchParams = useSearchParams();
+    const router = useRouter();
     const event = MOCK_EVENTS.find((e) => e.id === id);
-    const [activeTab, setActiveTab] = useState<TabType>("overview");
-    const [isWishlist, setIsWishlist] = useState(false);
-    const [isAttended, setIsAttended] = useState(false);
-    const [isComposerOpen, setIsComposerOpen] = useState(false);
 
-    // 이 행사의 포스트와 슬롯
-    const posts = useMemo(() => getPostsByEventId(id), [id]);
-    const slots = useMemo(() => getSlotsByEventId(id), [id]);
+    // URL의 tab 쿼리 파라미터로 초기 탭 결정
+    const initialTab = (searchParams.get("tab") as TabType) || "overview";
+    const [activeTab, setActiveTab] = useState<TabType>(initialTab);
+
+    // 탭 변경 시 URL도 업데이트
+    const handleTabChange = useCallback((tab: TabType) => {
+        setActiveTab(tab);
+        // URL 업데이트 (새로고침 시 탭 유지)
+        const url = new URL(window.location.href);
+        if (tab === "overview") {
+            url.searchParams.delete("tab");
+        } else {
+            url.searchParams.set("tab", tab);
+        }
+        router.replace(url.pathname + url.search, { scroll: false });
+    }, [router]);
+    const [isComposerOpen, setIsComposerOpen] = useState(false);
+    const [shareStatus, setShareStatus] = useState<"idle" | "copied">("idle");
+
+    // URL 변경 시 탭 업데이트 (알림 딥링크 등에서 접근 시)
+    useEffect(() => {
+        const tabParam = searchParams.get("tab") as TabType;
+        if (tabParam && ["overview", "hub", "timetable", "artists"].includes(tabParam)) {
+            setActiveTab(tabParam);
+        }
+    }, [searchParams]);
+
+    // 찜/다녀옴 상태 (Context)
+    const { isWishlist, isAttended, toggleWishlist, toggleAttended } = useWishlist();
+
+    // Dev Context - 시간 시뮬레이션, 시나리오 데이터, override 모드
+    const {
+        getNow,
+        overrideMode,
+        isDevMode,
+        scenarioEventId,
+        scenarioPosts,
+        scenarioSlots,
+    } = useDevContext();
+
+    // 이 행사의 포스트와 슬롯 (Dev 모드에서 시나리오 데이터 사용)
+    const posts = useMemo(() => {
+        // Dev 모드이고 현재 이벤트가 시나리오 이벤트와 같으면 시나리오 데이터 사용
+        if (isDevMode && id === scenarioEventId && scenarioPosts.length > 0) {
+            return scenarioPosts;
+        }
+        return getPostsByEventId(id);
+    }, [id, isDevMode, scenarioEventId, scenarioPosts]);
+
+    const slots = useMemo(() => {
+        if (isDevMode && id === scenarioEventId && scenarioSlots.length > 0) {
+            return scenarioSlots;
+        }
+        return getSlotsByEventId(id);
+    }, [id, isDevMode, scenarioEventId, scenarioSlots]);
+
+    // 공유 기능
+    const handleShare = useCallback(async () => {
+        const shareData = {
+            title: event?.title || "FesMate",
+            text: `${event?.title} - ${event?.venue.name}`,
+            url: window.location.href,
+        };
+
+        try {
+            // Web Share API 지원 확인
+            if (navigator.share && navigator.canShare?.(shareData)) {
+                await navigator.share(shareData);
+            } else {
+                // Fallback: URL 복사
+                await navigator.clipboard.writeText(window.location.href);
+                setShareStatus("copied");
+                setTimeout(() => setShareStatus("idle"), 2000);
+            }
+        } catch (error) {
+            // 사용자가 공유 취소한 경우 무시
+            if ((error as Error).name !== "AbortError") {
+                // Fallback: URL 복사
+                await navigator.clipboard.writeText(window.location.href);
+                setShareStatus("copied");
+                setTimeout(() => setShareStatus("idle"), 2000);
+            }
+        }
+    }, [event]);
 
     if (!event) {
         notFound();
     }
 
-    // 현재 시간 기준 자동 계산
-    const now = new Date();
-    const hubMode = getHubMode(event, now);
+    // 현재 시간 기준 자동 계산 (Dev 모드에서는 시뮬레이션 시간 사용)
+    const now = getNow();
+    const autoHubMode = getHubMode(event, now);
+    // Override 모드 적용 (AUTO가 아니면 강제 적용)
+    const hubMode: HubMode = overrideMode === "AUTO" ? autoHubMode : overrideMode;
+    const isOverridden = overrideMode !== "AUTO" && overrideMode !== autoHubMode;
 
     const tabs: { key: TabType; label: string; badge?: string }[] = [
         { key: "overview", label: "개요" },
@@ -70,8 +155,16 @@ export default function EventDetailPage({ params }: PageProps) {
                 <h1 className="flex-1 truncate px-4 text-center text-sm font-bold">
                     {event.title}
                 </h1>
-                <button className="text-muted-foreground hover:text-foreground">
-                    <Share2 className="h-5 w-5" />
+                <button
+                    onClick={handleShare}
+                    className="text-muted-foreground hover:text-foreground relative"
+                    title="공유하기"
+                >
+                    {shareStatus === "copied" ? (
+                        <Check className="h-5 w-5 text-green-500" />
+                    ) : (
+                        <Share2 className="h-5 w-5" />
+                    )}
                 </button>
             </header>
 
@@ -93,11 +186,21 @@ export default function EventDetailPage({ params }: PageProps) {
                                 Poster
                             </div>
                         )}
-                        {/* LIVE 배지 */}
+                        {/* LIVE/RECAP 배지 */}
                         {hubMode === "LIVE" && event.status === "SCHEDULED" && (
                             <div className="absolute top-2 left-2">
-                                <span className="px-2 py-1 text-xs font-bold rounded-full bg-red-500 text-white animate-pulse">
-                                    LIVE
+                                <span className={cn(
+                                    "px-2 py-1 text-xs font-bold rounded-full bg-red-500 text-white",
+                                    !isOverridden && "animate-pulse"
+                                )}>
+                                    LIVE {isOverridden && isDevMode && "(DEV)"}
+                                </span>
+                            </div>
+                        )}
+                        {hubMode === "RECAP" && isOverridden && isDevMode && (
+                            <div className="absolute top-2 left-2">
+                                <span className="px-2 py-1 text-xs font-bold rounded-full bg-gray-600 text-white">
+                                    RECAP (DEV)
                                 </span>
                             </div>
                         )}
@@ -121,27 +224,27 @@ export default function EventDetailPage({ params }: PageProps) {
                     {/* Action Buttons - ⭐찜 / ✅다녀옴 */}
                     <div className="flex w-full gap-3">
                         <button
-                            onClick={() => setIsWishlist(!isWishlist)}
+                            onClick={() => toggleWishlist(id)}
                             className={cn(
                                 "flex-1 flex items-center justify-center gap-2 rounded-full border py-2.5 text-sm font-medium transition-colors",
-                                isWishlist
+                                isWishlist(id)
                                     ? "bg-yellow-50 border-yellow-400 text-yellow-700"
                                     : "bg-background hover:bg-accent"
                             )}
                         >
-                            <Star className={cn("h-4 w-4", isWishlist && "fill-yellow-400")} />
+                            <Star className={cn("h-4 w-4", isWishlist(id) && "fill-yellow-400")} />
                             <span>찜 {event.stats?.wishlistCount?.toLocaleString()}</span>
                         </button>
                         <button
-                            onClick={() => setIsAttended(!isAttended)}
+                            onClick={() => toggleAttended(id)}
                             className={cn(
                                 "flex-1 flex items-center justify-center gap-2 rounded-full border py-2.5 text-sm font-medium transition-colors",
-                                isAttended
+                                isAttended(id)
                                     ? "bg-green-50 border-green-400 text-green-700"
                                     : "bg-background hover:bg-accent"
                             )}
                         >
-                            <CheckCircle2 className={cn("h-4 w-4", isAttended && "fill-green-400")} />
+                            <CheckCircle2 className={cn("h-4 w-4", isAttended(id) && "fill-green-400")} />
                             <span>다녀옴 {event.stats?.attendedCount?.toLocaleString()}</span>
                         </button>
                     </div>
@@ -154,7 +257,7 @@ export default function EventDetailPage({ params }: PageProps) {
                     {tabs.map((tab) => (
                         <button
                             key={tab.key}
-                            onClick={() => setActiveTab(tab.key)}
+                            onClick={() => handleTabChange(tab.key)}
                             className={cn(
                                 "flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-1",
                                 activeTab === tab.key

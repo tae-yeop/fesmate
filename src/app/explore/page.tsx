@@ -8,6 +8,7 @@ import { EventCalendarView } from "@/components/events/EventCalendarView";
 import { MOCK_EVENTS } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { Event } from "@/types/event";
+import { useWishlist } from "@/lib/wishlist-context";
 
 type ViewType = "card" | "list" | "calendar";
 type SortType = "date" | "recent";
@@ -36,6 +37,9 @@ export default function ExplorePage() {
         freeOnly: false,
     });
     const [activeFilter, setActiveFilter] = useState<keyof Filters | null>(null);
+
+    // 찜/다녀옴 상태
+    const { isWishlist, isAttended, toggleWishlist } = useWishlist();
 
     // 필터 옵션
     const filterOptions = {
@@ -328,7 +332,13 @@ export default function ExplorePage() {
                 {view === "card" && (
                     <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
                         {filteredEvents.map((event) => (
-                            <EventCard key={event.id} event={event} />
+                            <EventCard
+                                key={event.id}
+                                event={event}
+                                isWishlist={isWishlist(event.id)}
+                                isAttended={isAttended(event.id)}
+                                onWishlistToggle={() => toggleWishlist(event.id)}
+                            />
                         ))}
                     </div>
                 )}
@@ -336,7 +346,13 @@ export default function ExplorePage() {
                 {view === "list" && (
                     <div className="space-y-3">
                         {filteredEvents.map((event) => (
-                            <EventListItem key={event.id} event={event} />
+                            <EventListItem
+                                key={event.id}
+                                event={event}
+                                isWishlist={isWishlist(event.id)}
+                                isAttended={isAttended(event.id)}
+                                onWishlistToggle={() => toggleWishlist(event.id)}
+                            />
                         ))}
                     </div>
                 )}

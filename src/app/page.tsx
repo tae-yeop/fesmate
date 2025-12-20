@@ -1,8 +1,12 @@
+"use client";
+
 import Link from "next/link";
-import { ChevronRight, Play, Calendar, Users } from "lucide-react";
+import { ChevronRight, Play, Calendar, Users, UserPlus } from "lucide-react";
 import { EventCard } from "@/components/events/EventCard";
 import { MOCK_EVENTS, MOCK_POSTS } from "@/lib/mock-data";
 import { getHubMode } from "@/types/event";
+import { FriendActivityFeed } from "@/components/social/FriendActivityFeed";
+import { LeaderboardPreview } from "@/components/leaderboard/LeaderboardPreview";
 
 /**
  * 홈페이지 - PRD v0.5 기준
@@ -200,6 +204,22 @@ export default function Home() {
                         </div>
                     ))}
                 </div>
+            </section>
+
+            {/* 친구 활동 */}
+            <section className="px-4 py-6">
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-bold flex items-center gap-2">
+                        <UserPlus className="h-5 w-5 text-primary" />
+                        친구 활동
+                    </h2>
+                </div>
+                <FriendActivityFeed limit={3} showViewAll={true} />
+            </section>
+
+            {/* 리더보드 미리보기 */}
+            <section className="px-4 py-6">
+                <LeaderboardPreview limit={5} />
             </section>
 
             {/* 빈 상태 / 로그인 유도 */}

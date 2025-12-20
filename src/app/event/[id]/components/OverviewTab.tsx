@@ -20,8 +20,12 @@ export function OverviewTab({ event }: OverviewTabProps) {
                         <div>
                             <p className="font-medium">일시</p>
                             <p className="text-muted-foreground">{formatDateTime(event.startAt)}</p>
-                            {event.startAt.getTime() !== event.endAt.getTime() && (
-                                <p className="text-muted-foreground">~ {formatDateTime(event.endAt)}</p>
+                            {event.endAt ? (
+                                event.startAt.getTime() !== event.endAt.getTime() && (
+                                    <p className="text-muted-foreground">~ {formatDateTime(event.endAt)}</p>
+                                )
+                            ) : (
+                                <p className="text-muted-foreground text-orange-600">종료 시간 미정</p>
                             )}
                         </div>
                     </div>
@@ -63,19 +67,25 @@ export function OverviewTab({ event }: OverviewTabProps) {
             )}
 
             {/* 예매 링크 */}
-            <section>
-                <h3 className="text-lg font-bold mb-3">예매</h3>
-                <div className="space-y-2">
-                    <button className="w-full flex items-center justify-between rounded-lg border bg-card p-4 text-sm hover:bg-accent transition-colors">
-                        <span>인터파크 티켓</span>
-                        <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                    </button>
-                    <button className="w-full flex items-center justify-between rounded-lg border bg-card p-4 text-sm hover:bg-accent transition-colors">
-                        <span>YES24 티켓</span>
-                        <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                    </button>
-                </div>
-            </section>
+            {event.ticketLinks && event.ticketLinks.length > 0 && (
+                <section>
+                    <h3 className="text-lg font-bold mb-3">예매</h3>
+                    <div className="space-y-2">
+                        {event.ticketLinks.map((link, index) => (
+                            <a
+                                key={index}
+                                href={link.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="w-full flex items-center justify-between rounded-lg border bg-card p-4 text-sm hover:bg-accent transition-colors"
+                            >
+                                <span>{link.name}</span>
+                                <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                            </a>
+                        ))}
+                    </div>
+                </section>
+            )}
 
             {/* 통계 */}
             {event.stats && (
