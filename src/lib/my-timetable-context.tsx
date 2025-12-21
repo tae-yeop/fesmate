@@ -19,6 +19,49 @@ import { Slot } from "@/types/event";
 const STORAGE_KEY = "fesmate_my_timetables_v2";
 const SHARED_STORAGE_KEY = "fesmate_shared_timetables_v2";
 
+// Mock: 친구들의 타임테이블 (실제로는 서버에서 가져와야 함)
+// 각 사용자별, 행사별 슬롯 마킹 데이터
+// 실제 슬롯 ID 참조: pp-d{day}-s{stage}-{order}
+// Day1: NELL(pp-d1-s1-1), Jaurim(pp-d1-s1-2), Hyukoh(pp-d1-s1-3), YB(pp-d1-s1-4), Headline(pp-d1-s1-5)
+// Day2: s1: 1,2,3,4,5 / s2: 1,2,3,4,5
+// Day3: s1: 1,2,3,4,5
+const MOCK_FRIEND_TIMETABLES: Record<string, Record<string, SlotMark[]>> = {
+    // user2 (록페스러버)의 타임테이블 - user1과 Hyukoh(pp-d1-s1-3) 겹침
+    user2: {
+        pentaport: [
+            { slotId: "pp-d1-s1-1", type: "watch" },  // NELL
+            { slotId: "pp-d1-s1-3", type: "watch" },  // Hyukoh ← user1과 겹치는 슬롯
+            { slotId: "pp-d2-s1-1", type: "watch" },  // Day2 첫 공연
+            { slotId: "pp-d2-s1-4", type: "watch" },  // Day2 네번째
+        ],
+        e2: [
+            { slotId: "slot1", type: "watch" },
+            { slotId: "slot3", type: "watch" },
+        ],
+    },
+    // user3 (인디키드)의 타임테이블
+    user3: {
+        pentaport: [
+            { slotId: "pp-d1-s1-2", type: "watch" },  // Jaurim
+            { slotId: "pp-d1-s2-1", type: "watch" },  // Jazz Stage
+            { slotId: "pp-d2-s2-2", type: "watch" },
+        ],
+        e2: [
+            { slotId: "slot2", type: "watch" },
+            { slotId: "slot3", type: "watch" },
+        ],
+    },
+    // user4 (투어러)의 타임테이블
+    user4: {
+        pentaport: [
+            { slotId: "pp-d1-s1-1", type: "watch" },  // NELL
+            { slotId: "pp-d1-s1-3", type: "watch" },  // Hyukoh ← user1과 겹칠 수 있음
+            { slotId: "pp-d2-s1-2", type: "watch" },
+            { slotId: "pp-d3-s1-1", type: "watch" },
+        ],
+    },
+};
+
 interface MyTimetableContextType {
     // 슬롯 마킹 (새로운 방식)
     getSlotMark: (eventId: string, slotId: string) => SlotMark | undefined;
@@ -47,11 +90,17 @@ interface MyTimetableContextType {
     // 충돌 감지
     getConflicts: (eventId: string, slots: Slot[]) => TimeConflict[];
 
-    // 공유
+    // 공유 (기존 - 링크 방식)
     createShareLink: (eventId: string, nickname: string) => string;
     addSharedTimetable: (shareId: string, timetable: SharedTimetable) => void;
     getSharedTimetables: (eventId: string) => SharedTimetable[];
     removeSharedTimetable: (shareId: string) => void;
+
+    // 친구 타임테이블 (새로운 방식 - 친구 목록에서 선택)
+    getFriendTimetable: (userId: string, eventId: string) => SlotMark[] | null;
+    addFriendToOverlay: (userId: string, userNickname: string, eventId: string) => void;
+    removeFriendFromOverlay: (userId: string, eventId: string) => void;
+    getOverlayFriends: (eventId: string) => { userId: string; nickname: string }[];
 
     // 오버레이 뷰
     getOverlayItems: (eventId: string, slots: Slot[], myNickname: string) => {
@@ -73,9 +122,14 @@ const OVERLAY_COLORS = [
     "#EC4899", // pink
 ];
 
+// 오버레이에 추가된 친구 목록 저장 키
+const OVERLAY_FRIENDS_KEY = "fesmate_overlay_friends";
+
 export function MyTimetableProvider({ children }: { children: ReactNode }) {
     const [timetables, setTimetables] = useState<Record<string, MyTimetable>>({});
     const [sharedTimetables, setSharedTimetables] = useState<SharedTimetable[]>([]);
+    // 행사별 오버레이에 추가된 친구 목록: { [eventId]: [{ userId, nickname }] }
+    const [overlayFriends, setOverlayFriends] = useState<Record<string, { userId: string; nickname: string }[]>>({});
     const [isLoaded, setIsLoaded] = useState(false);
 
     // localStorage에서 로드
@@ -121,6 +175,12 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
                     })),
                 })));
             }
+
+            // overlayFriends 로드
+            const overlayStored = localStorage.getItem(OVERLAY_FRIENDS_KEY);
+            if (overlayStored) {
+                setOverlayFriends(JSON.parse(overlayStored));
+            }
         } catch (e) {
             console.error("Failed to load timetables:", e);
         }
@@ -139,6 +199,12 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
             localStorage.setItem(SHARED_STORAGE_KEY, JSON.stringify(sharedTimetables));
         }
     }, [sharedTimetables, isLoaded]);
+
+    useEffect(() => {
+        if (isLoaded) {
+            localStorage.setItem(OVERLAY_FRIENDS_KEY, JSON.stringify(overlayFriends));
+        }
+    }, [overlayFriends, isLoaded]);
 
     // 타임테이블 가져오기 (없으면 생성)
     const getOrCreateTimetable = useCallback((eventId: string): MyTimetable => {
@@ -437,17 +503,21 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
             .filter(item => item.slotMarkType === "watch" || item.type === "custom");
         const myItemsWithOwner = myItems.map(item => ({ ...item, ownerId: "me" }));
 
-        // 친구 아이템
-        const sharedItems: TimetableItem[] = [];
+        // 친구 아이템 (기존 공유 방식 + 새로운 친구 선택 방식)
+        const friendItems: TimetableItem[] = [];
+        let colorIndex = 1;
+
+        // 1. 기존 공유 링크 방식 (SharedTimetable)
         const shared = getSharedTimetables(eventId);
-        shared.forEach((s, index) => {
-            const color = OVERLAY_COLORS[(index + 1) % OVERLAY_COLORS.length];
+        shared.forEach((s) => {
+            const color = OVERLAY_COLORS[colorIndex % OVERLAY_COLORS.length];
+            colorIndex++;
             const watchMarks = s.slotMarks.filter(m => m.type === "watch");
 
             watchMarks.forEach(mark => {
                 const slot = slots.find(sl => sl.id === mark.slotId);
                 if (slot) {
-                    sharedItems.push({
+                    friendItems.push({
                         id: `${s.id}-${slot.id}`,
                         type: "slot",
                         title: slot.title || slot.artist?.name || "무제",
@@ -463,8 +533,37 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
             });
         });
 
+        // 2. 새로운 친구 선택 방식 (overlayFriends + MOCK_FRIEND_TIMETABLES)
+        const friends = overlayFriends[eventId] || [];
+        friends.forEach((friend) => {
+            const friendMarks = MOCK_FRIEND_TIMETABLES[friend.userId]?.[eventId];
+            if (!friendMarks) return;
+
+            const color = OVERLAY_COLORS[colorIndex % OVERLAY_COLORS.length];
+            colorIndex++;
+            const watchMarks = friendMarks.filter(m => m.type === "watch");
+
+            watchMarks.forEach(mark => {
+                const slot = slots.find(sl => sl.id === mark.slotId);
+                if (slot) {
+                    friendItems.push({
+                        id: `${friend.userId}-${slot.id}`,
+                        type: "slot",
+                        title: slot.title || slot.artist?.name || "무제",
+                        startAt: new Date(slot.startAt),
+                        endAt: new Date(slot.endAt),
+                        stage: slot.stage,
+                        slotMarkType: "watch",
+                        ownerId: friend.userId,
+                        ownerNickname: friend.nickname,
+                        ownerColor: color,
+                    });
+                }
+            });
+        });
+
         // 전체 아이템
-        const allItems = [...myItemsWithOwner, ...sharedItems].sort(
+        const allItems = [...myItemsWithOwner, ...friendItems].sort(
             (a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime()
         );
 
@@ -488,7 +587,45 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
         });
 
         return { items: allItems, together, alone };
-    }, [getTimetableItems, getSharedTimetables]);
+    }, [getTimetableItems, getSharedTimetables, overlayFriends]);
+
+    // 친구 타임테이블 가져오기 (Mock 데이터에서)
+    const getFriendTimetable = useCallback((userId: string, eventId: string): SlotMark[] | null => {
+        const userTimetables = MOCK_FRIEND_TIMETABLES[userId];
+        if (!userTimetables) return null;
+        return userTimetables[eventId] || null;
+    }, []);
+
+    // 오버레이에 친구 추가
+    const addFriendToOverlay = useCallback((userId: string, userNickname: string, eventId: string) => {
+        setOverlayFriends(prev => {
+            const eventFriends = prev[eventId] || [];
+            // 이미 추가된 친구인지 확인
+            if (eventFriends.some(f => f.userId === userId)) {
+                return prev;
+            }
+            return {
+                ...prev,
+                [eventId]: [...eventFriends, { userId, nickname: userNickname }],
+            };
+        });
+    }, []);
+
+    // 오버레이에서 친구 제거
+    const removeFriendFromOverlay = useCallback((userId: string, eventId: string) => {
+        setOverlayFriends(prev => {
+            const eventFriends = prev[eventId] || [];
+            return {
+                ...prev,
+                [eventId]: eventFriends.filter(f => f.userId !== userId),
+            };
+        });
+    }, []);
+
+    // 오버레이에 추가된 친구 목록 가져오기
+    const getOverlayFriends = useCallback((eventId: string): { userId: string; nickname: string }[] => {
+        return overlayFriends[eventId] || [];
+    }, [overlayFriends]);
 
     return (
         <MyTimetableContext.Provider
@@ -512,6 +649,10 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
                 addSharedTimetable,
                 getSharedTimetables,
                 removeSharedTimetable,
+                getFriendTimetable,
+                addFriendToOverlay,
+                removeFriendFromOverlay,
+                getOverlayFriends,
                 getOverlayItems,
             }}
         >
