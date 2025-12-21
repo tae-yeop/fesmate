@@ -2,13 +2,12 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Pencil, UserPlus, UserMinus, Users, UserCheck, LogIn, Search, Send, Inbox, Check, X, Calendar } from "lucide-react";
+import { ChevronLeft, Pencil, UserPlus, UserMinus, Users, UserCheck, LogIn, Search, Send, Inbox, Check, X, Calendar, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUserProfile } from "@/lib/user-profile-context";
 import { useFollow, MOCK_USER_PROFILES } from "@/lib/follow-context";
 import { useWishlist } from "@/lib/wishlist-context";
 import { useCompanion } from "@/lib/companion-context";
-import { ProfileEditModal } from "@/components/profile/ProfileEditModal";
 import { FollowStatus, UserProfile } from "@/types/follow";
 import { MOCK_EVENTS } from "@/lib/mock-data";
 import Link from "next/link";
@@ -48,7 +47,6 @@ export default function ProfilePage() {
     } = useCompanion();
 
     const [activeTab, setActiveTab] = useState<ProfileTab>("friends");
-    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
 
     // 팔로우 확인 모달 상태
@@ -240,13 +238,13 @@ export default function ProfilePage() {
                                 <h2 className="text-xl font-bold truncate">
                                     {myProfile.nickname}
                                 </h2>
-                                <button
-                                    onClick={() => setIsEditModalOpen(true)}
+                                <Link
+                                    href="/profile/edit"
                                     className="p-1.5 rounded-full bg-muted hover:bg-muted/80 transition-colors text-muted-foreground hover:text-foreground"
                                     aria-label="프로필 편집"
                                 >
-                                    <Pencil className="h-4 w-4" />
-                                </button>
+                                    <Settings className="h-4 w-4" />
+                                </Link>
                             </div>
                             <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
                                 {myProfile.bio || "한줄소개를 작성해보세요"}
@@ -647,12 +645,6 @@ export default function ProfilePage() {
                     </div>
                 ) : null}
             </div>
-
-            {/* 프로필 편집 모달 */}
-            <ProfileEditModal
-                isOpen={isEditModalOpen}
-                onClose={() => setIsEditModalOpen(false)}
-            />
 
             {/* 팔로우/언팔로우 확인 모달 */}
             {confirmModal.isOpen && confirmModal.user && (
