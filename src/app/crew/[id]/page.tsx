@@ -32,6 +32,7 @@ import { MOCK_EVENTS } from "@/lib/mock-data";
 import Link from "next/link";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { CrewCalendar } from "@/components/crew/CrewCalendar";
 
 /** 활동 타입별 아이콘 및 텍스트 */
 const ACTIVITY_CONFIG: Record<CrewActivityType, { icon: typeof Star; text: string; color: string }> = {
@@ -70,7 +71,7 @@ export default function CrewProfilePage() {
         toggleAnnouncementPin,
     } = useCrew();
 
-    const [activeTab, setActiveTab] = useState<"activity" | "members" | "events" | "manage">("activity");
+    const [activeTab, setActiveTab] = useState<"activity" | "members" | "events" | "calendar" | "manage">("activity");
     const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
     const [showJoinModal, setShowJoinModal] = useState(false);
     const [joinMessage, setJoinMessage] = useState("");
@@ -290,6 +291,7 @@ export default function CrewProfilePage() {
                             { key: "activity", label: "활동", count: activities.length },
                             { key: "members", label: "멤버", count: members.length },
                             { key: "events", label: "행사", count: crewEventDetails.length },
+                            { key: "calendar", label: "캘린더", count: 0 },
                             ...(userIsLeader ? [{ key: "manage", label: "관리", count: pendingRequestCount }] : []),
                         ].map(tab => (
                             <button
@@ -460,6 +462,11 @@ export default function CrewProfilePage() {
                             ))
                         )}
                     </div>
+                )}
+
+                {/* 캘린더 탭 */}
+                {activeTab === "calendar" && (
+                    <CrewCalendar crewId={crewId} />
                 )}
 
                 {/* 관리 탭 (크루장 전용) */}
