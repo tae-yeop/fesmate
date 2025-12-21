@@ -28,6 +28,7 @@
 | **리더보드** | ✅ 완료 (PRD 6.15) |
 | **내 프로필 페이지** | ✅ 완료 (`/profile`, `/profile/edit`) |
 | **프라이버시 설정** | ✅ 완료 (6개 항목, 4단계 공개 범위) |
+| **FieldNote (콜가이드)** | ✅ Phase 1-3 완료 (PRD 6.17, 뷰어/에디터/라우팅, 5탭 네비게이션) |
 | **배포** | 미착수 |
 
 ---
@@ -48,9 +49,9 @@
 - [x] `comment.ts`: Comment, CreateCommentInput
 
 ### 네비게이션
-- [x] 4탭 구조: 홈 / 탐색 / 커뮤니티 / MyFes
+- [x] 5탭 구조: 홈 / 탐색 / 노트 / 커뮤니티 / MyFes
 - [x] Header: 알림 배지, 프로필 드롭다운
-- [x] 라우트: `/`, `/explore`, `/community`, `/myfes`, `/event/[id]`
+- [x] 라우트: `/`, `/explore`, `/fieldnote`, `/community`, `/myfes`, `/event/[id]`
 
 ### 탐색 페이지 (/explore)
 - [x] 3뷰 토글: 카드뷰 / 리스트뷰 / 캘린더뷰
@@ -559,57 +560,79 @@
 - [x] 배지 획득 시 토스트 알림 — ✅ 완료 (BadgeToast 컴포넌트)
 - [x] 프로필 페이지에 배지 표시
 
-### 🎤 콜가이드 시스템 (PRD 6.17) [P1]
+### 🎤 FieldNote - 콜가이드 시스템 (PRD 6.17) [P1] — ✅ Phase 1-3 완료
 > 목적: 아티스트 곡별 호응법(콜&리스폰스)을 커뮤니티가 함께 작성/편집
+> 브랜딩: "FieldNote" (필드노트) - 현장에서 수집한 생생한 공연 정보
 
 **핵심 기능**
 - 아티스트의 특정 곡에 대한 호응법 가이드
 - YouTube 영상과 시간 동기화된 가사/콜가이드 표시
 - 커뮤니티 기반 작성/편집 (위키 스타일)
 
-**콜가이드 유형**
-| 유형 | 설명 | 예시 |
-|------|------|------|
-| 떼창 (Sing-along) | 함께 부르는 구간 | 코러스 전체, 특정 가사 |
-| 추임새 (Call) | 짧은 구호/외침 | "Hey!", "Yeah!", 아티스트 이름 |
-| 리스폰스 (Response) | 아티스트 콜에 대한 응답 | "Are you ready?" → "Yeah!" |
-| 동작 (Action) | 손동작, 점프 등 | 손흔들기, 점프, 앉았다일어나기 |
-| 라이트 (Light) | 조명 관련 | 휴대폰 플래시, 응원봉 색상 |
-| 조용 (Quiet) | 조용히 감상 구간 | 발라드, 멘트 구간 |
+**콜가이드 유형** (10개)
+| 유형 | 아이콘 | 설명 |
+|------|--------|------|
+| lyrics | 🎤 | 일반 가사 |
+| singalong | 🎵 | 함께 부르는 구간 |
+| call | 📣 | 추임새/외침 |
+| response | 💬 | 아티스트 콜에 응답 |
+| action | 👋 | 손동작 등 |
+| jump | 🦘 | 떼점프 구간 |
+| light | 📱 | 플래시, 응원봉 |
+| quiet | 🤫 | 조용히 감상 |
+| clap | 👏 | 리듬에 맞춰 박수 |
+| wave | 🌊 | 파도타기 |
 
-**Phase 1: 기본 구조** — 📋 TODO
-- [ ] CallGuide 타입 정의 (`src/types/call-guide.ts`)
+**Phase 1: 기본 구조** — ✅ 완료
+- [x] CallGuide 타입 정의 (`src/types/call-guide.ts`)
   - Song (곡 정보: 제목, 아티스트, YouTube ID, 재생시간)
   - CallGuideEntry (시간, 가사, 콜타입, 설명)
   - CallGuideVersion (버전 관리)
-- [ ] CallGuideContext 생성 (localStorage → Supabase)
-- [ ] 곡 목록 페이지 (아티스트별)
+  - 유틸리티: extractYouTubeId, formatTime, parseTime, findActiveEntry
+- [x] YouTube IFrame API 타입 (`src/types/youtube.ts`)
+- [x] CallGuideContext 생성 (`src/lib/call-guide-context.tsx`, localStorage)
+- [x] Mock 콜가이드 데이터 (`src/lib/mock-call-guide.ts`)
+  - 5개 곡 (Dynamite, Butter, Hype Boy, Love Dive, Next Level, Haru Haru)
+  - 곡별 콜가이드 엔트리 (타이밍, 가사, 콜타입, 설명)
 
-**Phase 2: 콜가이드 뷰어** — 📋 TODO
-- [ ] YouTube iframe 임베드 (YouTube IFrame API)
-- [ ] 영상 재생과 가사/콜가이드 동기화
-- [ ] 타임라인 UI (현재 위치 하이라이트)
-- [ ] 콜 타입별 아이콘/색상 표시
-- [ ] 미니 플레이어 (공연 중 호응법 빠른보기)
+**Phase 2: 콜가이드 뷰어** — ✅ 완료
+- [x] YouTube iframe 임베드 (YouTube IFrame API)
+- [x] 영상 재생과 가사/콜가이드 동기화
+- [x] 타임라인 UI (현재 위치 하이라이트, 스크롤 자동 이동)
+- [x] 콜 타입별 아이콘/색상 표시
+- [x] 현재/다음 엔트리 오버레이 표시
+- [x] 프로그레스 바에 엔트리 마커 표시
+- [x] 도움됨 버튼, 기여자 수, 버전 표시
+- [x] 검증 상태 배지 (verified/published/draft)
 
-**Phase 3: 콜가이드 에디터** — 📋 TODO
-- [ ] YouTube URL 입력 → 자동 메타데이터 추출
-- [ ] 영상 재생하며 타임스탬프 찍기 (키보드 단축키)
-- [ ] 가사 입력 (한글/로마자/원문)
-- [ ] 콜 타입 선택 (아이콘 팔레트)
-- [ ] 미리보기 모드
+**Phase 3: 콜가이드 에디터** — ✅ 완료
+- [x] YouTube 영상 재생하며 타임스탬프 찍기
+- [x] "현재 위치에 추가" 버튼
+- [x] 가사 입력 (한글/로마자/원문)
+- [x] 콜 타입 선택 (드롭다운)
+- [x] 엔트리 수정/삭제
+- [x] 변경 감지 및 변경 설명 입력
+- [x] 프로그레스 바에 엔트리 마커 표시 및 클릭 이동
 
 **Phase 4: 커뮤니티 협업** — 📋 P2
-- [ ] 버전 히스토리 (누가 언제 수정했는지)
+- [ ] 버전 히스토리 UI (누가 언제 수정했는지)
 - [ ] 수정 제안 (Suggest Edit)
-- [ ] 신뢰도 표시 (기여자 수, 검증 상태)
+- [ ] 신뢰도 표시 고도화
 - [ ] 신고/롤백 기능
 
-**연동 포인트**
-- 타임테이블: 슬롯 클릭 → 해당 아티스트 콜가이드 목록
-- 아티스트 페이지: 호응법 탭 → 곡별 콜가이드
-- LIVE 모드: 현재 공연 추정 곡의 콜가이드 알림
-- 푸시: "10분 후 [아티스트] 공연! 호응법 확인하기"
+**페이지 라우팅** — ✅ 완료 (FieldNote 브랜딩 적용)
+- [x] `/fieldnote` — FieldNote 홈 (호응법, 인기 가이드, 최근 수정)
+- [x] `/fieldnote/artist/[id]` — 아티스트별 콜가이드 목록
+- [x] `/fieldnote/call` — 콜가이드 목록 (인기/최근/아티스트별)
+- [x] `/fieldnote/call/[songId]` — 콜가이드 뷰어
+- [x] `/fieldnote/call/[songId]/edit` — 콜가이드 에디터
+- [x] 하위호환 리다이렉트: `/call-guide/*` → `/fieldnote/call/*`, `/guide/*` → `/fieldnote/*`
+
+**연동 포인트** — ✅ 기본 완료
+- [x] 타임테이블: 슬롯 클릭 → 해당 아티스트 콜가이드 목록 (SlotMarkMenu에 "호응법 보기" 버튼)
+- [x] 아티스트 페이지: 호응법 탭 → 곡별 콜가이드 (ArtistDetailModal에 "곡별 호응법 가이드" 링크)
+- [ ] LIVE 모드: 현재 공연 추정 곡의 콜가이드 알림
+- [ ] 푸시: "10분 후 [아티스트] 공연! 호응법 확인하기"
 
 **기술 문서**: `docs/tech/call_guide.md`
 
@@ -804,6 +827,10 @@ src/
 ├── app/
 │   ├── page.tsx              # 홈
 │   ├── explore/page.tsx      # 탐색 (369줄)
+│   ├── fieldnote/            # FieldNote (콜가이드)
+│   │   ├── page.tsx          # FieldNote 홈
+│   │   ├── artist/[id]/      # 아티스트별 가이드
+│   │   └── call/             # 콜가이드 (목록/뷰어/에디터)
 │   ├── community/page.tsx    # 커뮤니티 (356줄)
 │   ├── myfes/page.tsx        # MyFes
 │   ├── notifications/page.tsx # 알림
