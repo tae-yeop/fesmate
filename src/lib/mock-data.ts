@@ -484,6 +484,12 @@ export const MOCK_EVENTS: Event[] = [
             { id: "pp10", name: "BUZZ", genre: "Rock", image: "/artists/buzz.jpg" },
             { id: "pp11", name: "Daybreak", genre: "Indie", image: "/artists/daybreak.jpg" },
             { id: "pp12", name: "Jannabi", genre: "Indie Rock", image: "/artists/jannabi.jpg" },
+            // 콜가이드 테스트용 아티스트 (FieldNote 연동)
+            { id: "pp-bts", name: "BTS", genre: "K-Pop", image: "/artists/bts.jpg", fanchant: "아미~ 방탄!" },
+            { id: "pp-nj", name: "NewJeans", genre: "K-Pop", image: "/artists/newjeans.jpg", fanchant: "버니즈!" },
+            { id: "pp-ive", name: "IVE", genre: "K-Pop", image: "/artists/ive.jpg", fanchant: "다이브!" },
+            { id: "pp-aespa", name: "aespa", genre: "K-Pop", image: "/artists/aespa.jpg", fanchant: "마이!" },
+            { id: "pp-bb", name: "BIGBANG", genre: "K-Pop", image: "/artists/bigbang.jpg", fanchant: "VIP!" },
         ],
         ticketLinks: [
             { name: "인터파크 티켓", url: "https://tickets.interpark.com/pentaport" },
@@ -883,6 +889,60 @@ export const MOCK_SLOTS: Slot[] = [
         endAt: new Date(addDays(now, 2).setHours(21, 30, 0, 0)),
     },
 
+    // 콜가이드 테스트용 K-Pop 아티스트 슬롯 (Day 1 Third Stage)
+    {
+        id: "pp-d1-kpop-1",
+        eventId: "pentaport",
+        artistId: "pp-bts",
+        artist: { id: "pp-bts", name: "BTS", genre: "K-Pop", fanchant: "아미~ 방탄!" },
+        stage: "Third Stage",
+        day: 1,
+        startAt: new Date(addDays(now, 0).setHours(18, 0, 0, 0)),
+        endAt: new Date(addDays(now, 0).setHours(19, 0, 0, 0)),
+    },
+    {
+        id: "pp-d1-kpop-2",
+        eventId: "pentaport",
+        artistId: "pp-nj",
+        artist: { id: "pp-nj", name: "NewJeans", genre: "K-Pop", fanchant: "버니즈!" },
+        stage: "Third Stage",
+        day: 1,
+        startAt: new Date(addDays(now, 0).setHours(19, 0, 0, 0)),
+        endAt: new Date(addDays(now, 0).setHours(20, 0, 0, 0)),
+    },
+    // 콜가이드 테스트용 K-Pop 아티스트 슬롯 (Day 2 Third Stage)
+    {
+        id: "pp-d2-kpop-1",
+        eventId: "pentaport",
+        artistId: "pp-ive",
+        artist: { id: "pp-ive", name: "IVE", genre: "K-Pop", fanchant: "다이브!" },
+        stage: "Third Stage",
+        day: 2,
+        startAt: new Date(addDays(now, 1).setHours(18, 0, 0, 0)),
+        endAt: new Date(addDays(now, 1).setHours(19, 0, 0, 0)),
+    },
+    {
+        id: "pp-d2-kpop-2",
+        eventId: "pentaport",
+        artistId: "pp-aespa",
+        artist: { id: "pp-aespa", name: "aespa", genre: "K-Pop", fanchant: "마이!" },
+        stage: "Third Stage",
+        day: 2,
+        startAt: new Date(addDays(now, 1).setHours(19, 0, 0, 0)),
+        endAt: new Date(addDays(now, 1).setHours(20, 0, 0, 0)),
+    },
+    // 콜가이드 테스트용 K-Pop 아티스트 슬롯 (Day 3 Third Stage)
+    {
+        id: "pp-d3-kpop-1",
+        eventId: "pentaport",
+        artistId: "pp-bb",
+        artist: { id: "pp-bb", name: "BIGBANG", genre: "K-Pop", fanchant: "VIP!" },
+        stage: "Third Stage",
+        day: 3,
+        startAt: new Date(addDays(now, 2).setHours(18, 0, 0, 0)),
+        endAt: new Date(addDays(now, 2).setHours(19, 30, 0, 0)),
+    },
+
     // ============================================
     // Seoul Jazz Festival 2025 - Day 1 (어제)
     {
@@ -1179,6 +1239,76 @@ export const MOCK_POSTS: Post[] = [
         updatedAt: addDays(now, -3),
     },
 
+    // 팬이벤트
+    {
+        id: "post_fanevent1",
+        eventId: "e2",
+        userId: "user4",
+        type: "fanevent",
+        status: "ACTIVE",
+        content: "Norah Jones 생일카페 운영합니다! 🎂 음료 주문 시 포토카드 2장 증정, 럭키드로우 진행해요. 생일축하 메시지 남기시면 쿠키 증정!",
+        meetAt: addDays(now, 0),
+        placeText: "신논현역 생일카페",
+        placeHint: "9호선 신논현역 5번 출구 도보 3분",
+        helpfulCount: 28,
+        createdAt: addDays(now, -5),
+        updatedAt: addDays(now, -5),
+        expiresAt: addDays(now, 1),
+    },
+    {
+        id: "post_fanevent2",
+        eventId: "55948",
+        userId: "user5",
+        type: "fanevent",
+        status: "ACTIVE",
+        content: "새로운 학교의 리더즈 서울 공연 기념 포토존 운영합니다! 📸 공연 당일 YES24 LIVE HALL 앞에서 11시~16시 운영. 포토 프레임, 응원봉 장식 준비했어요!",
+        meetAt: addDays(now, 30),
+        placeText: "YES24 LIVE HALL 정문",
+        placeHint: "능동로 입구",
+        helpfulCount: 15,
+        createdAt: addDays(now, -2),
+        updatedAt: addDays(now, -2),
+        expiresAt: addDays(now, 31),
+    },
+
+    // 뒷풀이
+    {
+        id: "post_afterparty1",
+        eventId: "e2",
+        userId: "user6",
+        type: "afterparty",
+        status: "ACTIVE",
+        content: "재즈페스 2일차 끝나고 맥주 한 잔 하실 분! 🍺 공연 감상평 나누면서 가볍게 마셔요. 인당 2만원 정도 예상됩니다.",
+        meetAt: addDays(now, 1),
+        maxPeople: 6,
+        currentPeople: 2,
+        placeText: "송파역 맥주집",
+        placeHint: "8호선 송파역 3번 출구 앞",
+        budget: "인당 2만원",
+        helpfulCount: 12,
+        createdAt: addDays(now, -1),
+        updatedAt: addDays(now, -1),
+        expiresAt: addDays(now, 1),
+    },
+    {
+        id: "post_afterparty2",
+        eventId: "55948",
+        userId: "user2",
+        type: "afterparty",
+        status: "ACTIVE",
+        content: "AG! 공연 끝나고 팬미팅 분위기로 회식해요~ 🎉 공연 소감 나누고 다음 공연 계획도 세워봐요! 일식집 예약했어요.",
+        meetAt: new Date(addDays(now, 30).setHours(21, 30, 0, 0)),
+        maxPeople: 8,
+        currentPeople: 3,
+        placeText: "건대입구역 일식집",
+        placeHint: "2호선 건대입구역 6번 출구",
+        budget: "인당 3만원",
+        helpfulCount: 8,
+        createdAt: addDays(now, -1),
+        updatedAt: addDays(now, -1),
+        expiresAt: addDays(now, 31),
+    },
+
     // 리뷰 (RECAP용)
     {
         id: "post10",
@@ -1431,18 +1561,13 @@ export function getPostsByEventId(eventId: string): Post[] {
 /**
  * 헬퍼: 커뮤니티 카테고리 글 목록 가져오기
  */
-const COMMUNITY_TYPES = ["companion", "taxi", "meal", "lodge", "transfer", "tip", "question", "review", "video"];
+const COMMUNITY_TYPES = ["companion", "taxi", "meal", "lodge", "transfer", "tip", "fanevent", "afterparty", "question", "review", "video"];
 
 export function getCommunityPosts(category?: string, eventId?: string): Post[] {
     let posts = MOCK_POSTS.filter(p => COMMUNITY_TYPES.includes(p.type));
 
     if (category && category !== "all") {
-        // tip과 review를 같은 카테고리로 묶음
-        if (category === "tip") {
-            posts = posts.filter(p => p.type === "tip" || p.type === "review" || p.type === "video");
-        } else {
-            posts = posts.filter(p => p.type === category);
-        }
+        posts = posts.filter(p => p.type === category);
     }
 
     if (eventId && eventId !== "all") {

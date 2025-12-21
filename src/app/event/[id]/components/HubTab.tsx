@@ -84,8 +84,8 @@ export function HubTab({ event, posts, slots }: HubTabProps) {
     // 포스트 타입별 분류 (메모이제이션) - 차단된 사용자 제외
     const { realTimePosts, communityPosts, reviewPosts } = useMemo(() => ({
         realTimePosts: visiblePosts.filter(p => ["gate", "md", "facility", "safety"].includes(p.type)),
-        communityPosts: visiblePosts.filter(p => ["companion", "taxi", "meal", "lodge", "transfer"].includes(p.type)),
-        reviewPosts: visiblePosts.filter(p => ["review", "video", "tip"].includes(p.type)),
+        communityPosts: visiblePosts.filter(p => ["companion", "taxi", "meal", "lodge", "transfer", "tip", "fanevent", "afterparty"].includes(p.type)),
+        reviewPosts: visiblePosts.filter(p => ["review", "video"].includes(p.type)),
     }), [visiblePosts]);
 
     // 필터링된 포스트 (메모이제이션)

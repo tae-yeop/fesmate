@@ -13,8 +13,10 @@ export type CommunityPostType =
     | "meal"        // 밥
     | "lodge"       // 숙소
     | "transfer"    // 직거래양도
-    | "tip"         // 후기·팁
-    | "question";   // 질문
+    | "tip"         // 팁/꿀팁
+    | "question"    // 질문
+    | "fanevent"    // 팬이벤트 (생일카페, 포토존, 서포트)
+    | "afterparty"; // 뒷풀이 (공연 후 모임)
 
 /** 글 타입 - 기록 */
 export type RecordPostType = "review" | "video";
@@ -136,10 +138,18 @@ export function calculateExpiresAt(
             break;
 
         case "companion":
-            // 동행(일반): meet_at + 6시간 또는 start_at + 6시간
+        case "afterparty":
+            // 동행/뒷풀이: meet_at + 6시간 또는 start_at + 6시간
             if (meetAt) {
                 return new Date(meetAt.getTime() + 6 * 60 * 60 * 1000);
             }
+            if (eventStartAt) {
+                return new Date(eventStartAt.getTime() + 6 * 60 * 60 * 1000);
+            }
+            break;
+
+        case "fanevent":
+            // 팬이벤트: event_start_at + 6시간
             if (eventStartAt) {
                 return new Date(eventStartAt.getTime() + 6 * 60 * 60 * 1000);
             }
@@ -190,8 +200,10 @@ export const POST_TYPE_LABELS: Record<PostType, string> = {
     meal: "밥",
     lodge: "숙소",
     transfer: "직거래양도",
-    tip: "후기·팁",
+    tip: "팁",
     question: "질문",
+    fanevent: "팬이벤트",
+    afterparty: "뒷풀이",
 
     // 기록
     review: "후기",
@@ -202,7 +214,7 @@ export const POST_TYPE_LABELS: Record<PostType, string> = {
 export const POST_TYPE_CATEGORIES = {
     realtime: ["gate", "md", "facility", "safety"] as RealtimePostType[],
     official: ["official"] as OfficialPostType[],
-    community: ["companion", "taxi", "meal", "lodge", "transfer", "tip", "question"] as CommunityPostType[],
+    community: ["companion", "taxi", "meal", "lodge", "transfer", "tip", "question", "fanevent", "afterparty"] as CommunityPostType[],
     record: ["review", "video"] as RecordPostType[],
 };
 
