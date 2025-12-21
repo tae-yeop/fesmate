@@ -626,6 +626,53 @@
 - [ ] 공유 이미지 생성 (인스타 스토리/카카오톡)
 - [ ] 통계: 총 관람 수, 최다 장르, 최다 아티스트, 총 이동 거리
 
+### 📅 타임테이블 구조 개선 (PRD 6.18) [P1]
+> 목적: 단독 공연과 페스티벌의 타임테이블 차이점을 반영
+
+**행사 유형별 타임테이블**
+| 유형 | 뷰 타입 | 특징 |
+|------|---------|------|
+| 단독 공연 | 선형 (Linear) | 운영 일정 중심 (MD, 입장, 공연) |
+| 페스티벌 | 그리드 (Grid) | 멀티 스테이지 + 아티스트 라인업 |
+
+**Phase 1: 타입 확장** — 📋 TODO
+- [ ] `OperationalSlotType` 타입 추가 (md_sale, ticket_pickup, standing_entry 등)
+- [ ] `OperationalSlot` 인터페이스 추가
+- [ ] `Event`에 `operationalSlots`, `stages`, `timetableType` 필드 추가
+- [ ] `Stage` 인터페이스 추가 (id, name, order, color)
+
+**Phase 2: 컴포넌트 분리** — 📋 TODO
+- [ ] `LinearTimeline` 컴포넌트 (단독 공연용)
+  - 운영 일정 아이템 (아이콘, 시간, 위치)
+  - 현재 진행 중 하이라이트
+  - 시간순 선형 배치
+- [ ] `GridTimeline` 리팩토링 (페스티벌용)
+  - 스테이지별 컬럼
+  - 시간 축
+  - 동시간대 비교 용이
+- [ ] `TimetableView` 래퍼 (행사 유형에 따라 자동 선택)
+
+**Phase 3: Mock 데이터** — 📋 TODO
+- [ ] 단독 콘서트 시나리오 추가 (운영 일정 포함)
+  - MD 판매, 티켓 수령, 입장, 공연 시작/종료, 셔틀
+- [ ] 기존 페스티벌에 stages 필드 추가
+
+**운영 슬롯 타입**
+| 타입 | 아이콘 | 설명 |
+|------|--------|------|
+| `md_sale` | 🛍️ | MD 현장 판매 |
+| `ticket_pickup` | 🎫 | 티켓 현장 수령 |
+| `locker_open` | 🧳 | 물품 보관소 |
+| `queue_start` | 🚶 | 대기열 시작 |
+| `standing_entry` | 🚪 | 스탠딩 입장 |
+| `seated_entry` | 🪑 | 지정석 입장 |
+| `show_start` | 🎵 | 공연 시작 |
+| `show_end` | 🔚 | 공연 종료 |
+| `intermission` | ☕ | 인터미션 |
+| `shuttle` | 🚌 | 셔틀버스 |
+
+**기술 문서**: `docs/tech/timetable_structure.md`
+
 ---
 
 ## ⏳ 미구현 (아직 만들지 않음)
