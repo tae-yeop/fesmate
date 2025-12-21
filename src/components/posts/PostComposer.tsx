@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import {
     X,
@@ -23,6 +23,12 @@ import {
     ImagePlus,
     Send,
     LogIn,
+    Lightbulb,
+    PartyPopper,
+    Cake,
+    Search,
+    ChevronRight,
+    Calendar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PostType, POST_TYPE_LABELS } from "@/types/post";
@@ -30,16 +36,21 @@ import { UploadedImage } from "@/types/image";
 import { useAuth } from "@/lib/auth-context";
 import { useDevContext } from "@/lib/dev-context";
 import { ImageUploader } from "@/components/image";
+import { MOCK_EVENTS } from "@/lib/mock-data";
+import { useWishlist } from "@/lib/wishlist-context";
+import { Event } from "@/types/event";
 
 interface PostComposerProps {
     isOpen: boolean;
     onClose: () => void;
-    eventId: string;
-    eventTitle: string;
-    initialType?: PostType;
+    /** 초기 선택된 행사 ID (선택적) */
+    eventId?: string;
+    /** 초기 선택된 행사 제목 (선택적) */
+    eventTitle?: string;
     /** 수정 모드: 기존 글 데이터 */
     editPost?: {
         id: string;
+        eventId: string;
         content: string;
         maxPeople?: number;
         price?: string;
@@ -81,33 +92,48 @@ const POST_TYPE_OPTIONS: PostTypeOption[] = [
     { type: "meal", label: "밥", icon: Utensils, description: "밥 같이 먹어요", category: "community" },
     { type: "lodge", label: "숙소", icon: Home, description: "숙소 공유/구해요", category: "community" },
     { type: "transfer", label: "양도", icon: Ticket, description: "티켓 양도/구해요", category: "community" },
+    { type: "tip", label: "팁", icon: Lightbulb, description: "꿀팁 공유", category: "community" },
+    { type: "fanevent", label: "팬이벤트", icon: Cake, description: "생일카페/포토존/서포트", category: "community" },
+    { type: "afterparty", label: "뒷풀이", icon: PartyPopper, description: "공연 후 모임", category: "community" },
     { type: "question", label: "질문", icon: HelpCircle, description: "궁금한 점 질문", category: "community" },
     // 후기
     { type: "review", label: "후기", icon: Star, description: "행사 후기", category: "review" },
     { type: "video", label: "영상", icon: Video, description: "영상 공유", category: "review" },
-    { type: "tip", label: "팁", icon: MessageCircle, description: "꿀팁 공유", category: "review" },
 ];
 
 /**
  * 글 작성/수정 모달 - PRD v0.5 기준
  * - 글 타입 선택
+ * - 행사 검색/선택
  * - 템플릿 기반 작성
  * - 비로그인 시 로그인 유도
  * - 수정 모드 지원
  */
-export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType, editPost, onEditComplete }: PostComposerProps) {
+export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, onEditComplete }: PostComposerProps) {
     const { user, isLoading } = useAuth();
     const { isLoggedIn: isDevLoggedIn } = useDevContext();
+    const { wishlist } = useWishlist();
     const isEditMode = !!editPost;
 
     // 실제 로그인 또는 Dev 모드 로그인 상태 확인
     const isLoggedIn = !!user || isDevLoggedIn;
 
-    const [step, setStep] = useState<"select" | "compose">(initialType || isEditMode ? "compose" : "select");
-    const [selectedType, setSelectedType] = useState<PostType | null>(initialType || null);
+    // 단계: select (타입 선택) -> compose (작성)
+    const [step, setStep] = useState<"select" | "compose">(isEditMode ? "compose" : "select");
+    const [selectedType, setSelectedType] = useState<PostType | null>(null);
     const [content, setContent] = useState(editPost?.content || "");
     const [images, setImages] = useState<UploadedImage[]>([]);
     const [showImageUploader, setShowImageUploader] = useState(false);
+
+    // 행사 선택 상태
+    const [selectedEventId, setSelectedEventId] = useState<string | null>(editPost?.eventId || eventId || null);
+    const [isEventSelectorOpen, setIsEventSelectorOpen] = useState(false);
+
+    // 선택된 행사 정보
+    const selectedEvent = useMemo(() => {
+        if (!selectedEventId) return null;
+        return MOCK_EVENTS.find(e => e.id === selectedEventId) || null;
+    }, [selectedEventId]);
 
     // 커뮤니티용 추가 필드
     const [meetTime, setMeetTime] = useState(editPost?.meetTime || "");
@@ -197,7 +223,7 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType
             // 이미지 URL 배열로 변환 (나중에 백엔드로 전송 시 사용)
             const imageUrls = images.map(img => img.url);
             console.log({
-                eventId,
+                eventId: selectedEventId,
                 type: selectedType,
                 content,
                 images: imageUrls,
@@ -213,6 +239,7 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType
         // 폼 리셋
         setStep("select");
         setSelectedType(null);
+        setSelectedEventId(eventId || null);
         setContent("");
         setImages([]);
         setMeetTime("");
@@ -224,9 +251,10 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType
     };
 
     const isValid = () => {
+        if (!selectedEventId) return false;  // 행사 선택 필수
         if (!content.trim()) return false;
-        if (selectedOption?.category === "community" && selectedType !== "question") {
-            // 질문 외 커뮤니티 글은 시간과 장소 필수
+        if (selectedOption?.category === "community" && selectedType !== "question" && selectedType !== "tip") {
+            // 질문, 팁 외 커뮤니티 글은 시간과 장소 필수
             if (!meetTime || !placeText) return false;
         }
         if (selectedType === "video" && !videoUrl.trim()) return false;
@@ -261,10 +289,28 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType
                     </button>
                 </div>
 
-                {/* 행사 정보 */}
-                <div className="px-4 py-2 bg-muted/50 text-sm text-muted-foreground">
-                    📍 {eventTitle}
-                </div>
+                {/* 행사 선택 */}
+                <button
+                    onClick={() => !isEditMode && setIsEventSelectorOpen(true)}
+                    disabled={isEditMode}
+                    className={cn(
+                        "w-full px-4 py-3 bg-muted/50 text-sm flex items-center justify-between transition-colors",
+                        !isEditMode && "hover:bg-muted cursor-pointer",
+                        isEditMode && "cursor-default"
+                    )}
+                >
+                    <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        {selectedEvent ? (
+                            <span className="font-medium text-foreground">{selectedEvent.title}</span>
+                        ) : (
+                            <span className="text-muted-foreground">행사를 선택하세요</span>
+                        )}
+                    </div>
+                    {!isEditMode && (
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    )}
+                </button>
 
                 {/* 콘텐츠 */}
                 <div className="flex-1 overflow-y-auto">
@@ -331,6 +377,176 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType
                         </div>
                     </div>
                 )}
+            </div>
+
+            {/* 행사 선택 모달 */}
+            <EventSelectorModal
+                isOpen={isEventSelectorOpen}
+                onClose={() => setIsEventSelectorOpen(false)}
+                onSelect={(event) => {
+                    setSelectedEventId(event.id);
+                    setIsEventSelectorOpen(false);
+                }}
+                selectedEventId={selectedEventId}
+                wishlistIds={Array.from(wishlist)}
+            />
+        </div>
+    );
+}
+
+// 행사 선택 모달
+function EventSelectorModal({
+    isOpen,
+    onClose,
+    onSelect,
+    selectedEventId,
+    wishlistIds,
+}: {
+    isOpen: boolean;
+    onClose: () => void;
+    onSelect: (event: Event) => void;
+    selectedEventId: string | null;
+    wishlistIds: string[];
+}) {
+    const [searchQuery, setSearchQuery] = useState("");
+
+    // 행사 필터링 및 정렬
+    const filteredEvents = useMemo(() => {
+        const activeEvents = MOCK_EVENTS.filter(e => e.status !== "CANCELED");
+
+        // 검색어 필터
+        const filtered = searchQuery.trim()
+            ? activeEvents.filter(e =>
+                e.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                e.venue.name.toLowerCase().includes(searchQuery.toLowerCase())
+            )
+            : activeEvents;
+
+        // 찜한 행사 우선, 그 다음 날짜순
+        return filtered.sort((a, b) => {
+            const aWished = wishlistIds.includes(a.id);
+            const bWished = wishlistIds.includes(b.id);
+            if (aWished && !bWished) return -1;
+            if (!aWished && bWished) return 1;
+            return new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
+        });
+    }, [searchQuery, wishlistIds]);
+
+    // 찜한 행사 목록
+    const wishedEvents = filteredEvents.filter(e => wishlistIds.includes(e.id));
+    const otherEvents = filteredEvents.filter(e => !wishlistIds.includes(e.id));
+
+    if (!isOpen) return null;
+
+    const formatDate = (date: Date) => {
+        return new Intl.DateTimeFormat("ko-KR", {
+            month: "short",
+            day: "numeric",
+            weekday: "short",
+        }).format(new Date(date));
+    };
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">
+            {/* 백드롭 */}
+            <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+
+            {/* 모달 */}
+            <div className="relative w-full max-w-lg bg-background rounded-t-2xl sm:rounded-2xl max-h-[80vh] overflow-hidden flex flex-col">
+                {/* 헤더 */}
+                <div className="flex items-center justify-between px-4 py-3 border-b">
+                    <h2 className="font-bold">행사 선택</h2>
+                    <button onClick={onClose} className="p-1 hover:bg-accent rounded">
+                        <X className="h-5 w-5" />
+                    </button>
+                </div>
+
+                {/* 검색 */}
+                <div className="px-4 py-3 border-b">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="행사명 검색..."
+                            className="w-full pl-10 pr-4 py-2 rounded-lg border bg-background text-sm"
+                            autoFocus
+                        />
+                    </div>
+                </div>
+
+                {/* 행사 목록 */}
+                <div className="flex-1 overflow-y-auto">
+                    {/* 찜한 행사 */}
+                    {wishedEvents.length > 0 && !searchQuery && (
+                        <div className="px-4 pt-4">
+                            <h3 className="text-xs font-bold text-muted-foreground mb-2 flex items-center gap-1">
+                                <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                                찜한 행사
+                            </h3>
+                            <div className="space-y-2">
+                                {wishedEvents.map((event) => (
+                                    <button
+                                        key={event.id}
+                                        onClick={() => onSelect(event)}
+                                        className={cn(
+                                            "w-full p-3 rounded-lg border text-left transition-colors",
+                                            selectedEventId === event.id
+                                                ? "border-primary bg-primary/5"
+                                                : "hover:border-primary/50 hover:bg-accent/50"
+                                        )}
+                                    >
+                                        <p className="font-medium text-sm line-clamp-1">{event.title}</p>
+                                        <p className="text-xs text-muted-foreground mt-0.5">
+                                            {formatDate(event.startAt)} · {event.venue.name}
+                                        </p>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 기타 행사 */}
+                    <div className="px-4 py-4">
+                        {!searchQuery && wishedEvents.length > 0 && (
+                            <h3 className="text-xs font-bold text-muted-foreground mb-2">전체 행사</h3>
+                        )}
+                        {filteredEvents.length > 0 ? (
+                            <div className="space-y-2">
+                                {(searchQuery ? filteredEvents : otherEvents).map((event) => (
+                                    <button
+                                        key={event.id}
+                                        onClick={() => onSelect(event)}
+                                        className={cn(
+                                            "w-full p-3 rounded-lg border text-left transition-colors",
+                                            selectedEventId === event.id
+                                                ? "border-primary bg-primary/5"
+                                                : "hover:border-primary/50 hover:bg-accent/50"
+                                        )}
+                                    >
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-medium text-sm line-clamp-1">{event.title}</p>
+                                                <p className="text-xs text-muted-foreground mt-0.5">
+                                                    {formatDate(event.startAt)} · {event.venue.name}
+                                                </p>
+                                            </div>
+                                            {wishlistIds.includes(event.id) && (
+                                                <Star className="h-4 w-4 fill-yellow-400 text-yellow-400 flex-shrink-0 ml-2" />
+                                            )}
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-8 text-muted-foreground">
+                                <Search className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                                <p className="text-sm">검색 결과가 없습니다</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -444,6 +660,10 @@ function ComposeForm({
                 return "영상에 대한 설명을 적어주세요.";
             case "tip":
                 return "다른 분들에게 도움이 될 팁을 공유해주세요.";
+            case "fanevent":
+                return "팬이벤트 정보를 알려주세요. (장소, 운영시간, 특전 등)";
+            case "afterparty":
+                return "뒷풀이 정보를 알려주세요. (장소, 시간, 예상 비용 등)";
             default:
                 return "내용을 입력해주세요.";
         }
@@ -500,8 +720,8 @@ function ComposeForm({
                 </div>
             )}
 
-            {/* 커뮤니티 추가 필드 */}
-            {isCommunity && type !== "question" && (
+            {/* 커뮤니티 추가 필드 (질문, 팁 제외) */}
+            {isCommunity && type !== "question" && type !== "tip" && (
                 <>
                     <div className="grid grid-cols-2 gap-3">
                         <div>

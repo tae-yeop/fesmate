@@ -29,6 +29,9 @@ import {
     X,
     Calendar,
     Play,
+    Lightbulb,
+    PartyPopper,
+    Cake,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MOCK_EVENTS, MOCK_USERS, getCommunityPosts } from "@/lib/mock-data";
@@ -60,7 +63,7 @@ const getUserProfile = (userId: string) => {
 };
 import { PARTICIPATION_LABELS, ACTIVITY_STATUS_LABELS } from "@/types/participation";
 
-type CategoryType = "companion" | "taxi" | "meal" | "lodge" | "transfer" | "tip" | "question" | "crew";
+type CategoryType = "companion" | "taxi" | "meal" | "lodge" | "transfer" | "tip" | "fanevent" | "afterparty" | "question" | "crew";
 
 interface Category {
     key: CategoryType;
@@ -143,7 +146,9 @@ export default function CommunityPage() {
         { key: "meal", label: "밥", icon: Utensils },
         { key: "lodge", label: "숙소", icon: Home },
         { key: "transfer", label: "양도", icon: Ticket },
-        { key: "tip", label: "후기·팁", icon: MessageCircle },
+        { key: "tip", label: "팁", icon: Lightbulb },
+        { key: "fanevent", label: "팬이벤트", icon: Cake },
+        { key: "afterparty", label: "뒷풀이", icon: PartyPopper },
         { key: "question", label: "질문", icon: HelpCircle },
         { key: "crew", label: "크루", icon: UsersRound },
     ];
@@ -810,9 +815,8 @@ export default function CommunityPage() {
             <PostComposer
                 isOpen={isComposerOpen}
                 onClose={() => setIsComposerOpen(false)}
-                eventId={selectedEventId !== "all" ? selectedEventId : MOCK_EVENTS[0].id}
-                eventTitle={selectedEvent?.title || "행사 선택"}
-                initialType={activeCategory as PostType}
+                eventId={selectedEventId !== "all" ? selectedEventId : undefined}
+                eventTitle={selectedEvent?.title}
             />
 
             {/* Post Composer Modal - 글 수정 */}
@@ -822,9 +826,9 @@ export default function CommunityPage() {
                     onClose={() => setEditPost(null)}
                     eventId={editPost.eventId}
                     eventTitle={getEventName(editPost.eventId)}
-                    initialType={editPost.type as PostType}
                     editPost={{
                         id: editPost.id,
+                        eventId: editPost.eventId,
                         content: editPost.content,
                         maxPeople: editPost.maxPeople,
                         price: editPost.price,
