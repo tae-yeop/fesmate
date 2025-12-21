@@ -1548,6 +1548,40 @@ export const MOCK_NOTIFICATIONS: Notification[] = [
         isRead: true,
         createdAt: addDays(now, -5),
     },
+    // 참여 관련 알림들 (Phase 3)
+    {
+        id: "notif9",
+        userId: "user1",
+        type: "participation_accepted",
+        postId: "post4",
+        title: "🚕 택시팟 신청이 수락되었어요!",
+        body: "투어러님이 신청을 수락했어요. 일정을 확인하세요.",
+        deepLink: "/community?participation=true",
+        isRead: false,
+        createdAt: addDays(now, -0.05),
+    },
+    {
+        id: "notif10",
+        userId: "user1",
+        type: "participation_reminder_1h",
+        postId: "post4",
+        title: "⏰ 1시간 후 택시팟!",
+        body: "18:00에 택시팟이 시작돼요! 장소: 올림픽공원 평화의 광장",
+        deepLink: "/community?participation=true",
+        isRead: false,
+        createdAt: addDays(now, -0.02),
+    },
+    {
+        id: "notif11",
+        userId: "user1",
+        type: "participation_reminder_1d",
+        postId: "post5",
+        title: "📅 내일 19:30 밥약이 있어요!",
+        body: "🍚 밥약 일정을 확인하세요. 장소: 올림픽공원역 9번 출구",
+        deepLink: "/community?participation=true",
+        isRead: true,
+        createdAt: addDays(now, -0.5),
+    },
 ];
 
 /**

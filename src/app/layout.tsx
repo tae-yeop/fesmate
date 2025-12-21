@@ -5,6 +5,7 @@ import { Header } from "@/components/layout/Header";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { DevProvider } from "@/lib/dev-context";
 import { DevPanel, DevStatusBar } from "@/components/dev";
+import { BadgeToast } from "@/components/badge/BadgeToast";
 import { AuthProvider } from "@/lib/auth-context";
 import { BlockProvider } from "@/lib/block-context";
 import { WishlistProvider } from "@/lib/wishlist-context";
@@ -19,6 +20,7 @@ import { LeaderboardProvider } from "@/lib/leaderboard-context";
 import { JoinProvider } from "@/lib/join-context";
 import { CompanionProvider } from "@/lib/companion-context";
 import { ParticipationProvider } from "@/lib/participation-context";
+import { NotificationProvider } from "@/lib/notification-context";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -61,13 +63,16 @@ export default function RootLayout({
                       <JoinProvider>
                       <CompanionProvider>
                       <ParticipationProvider>
+                      <NotificationProvider>
                       <DevStatusBar />
                       <div className="relative flex min-h-screen flex-col">
                         <Header />
                         <main className="flex-1 pb-16 md:pb-0">{children}</main>
                         <MobileNav />
                         <DevPanel />
+                        <BadgeToast />
                       </div>
+                      </NotificationProvider>
                       </ParticipationProvider>
                       </CompanionProvider>
                       </JoinProvider>

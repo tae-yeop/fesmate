@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import {
     Users,
@@ -28,6 +28,7 @@ import {
     Check,
     X,
     Calendar,
+    Play,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MOCK_EVENTS, MOCK_USERS, getCommunityPosts } from "@/lib/mock-data";
@@ -57,7 +58,7 @@ import { MOCK_USER_PROFILES } from "@/lib/follow-context";
 const getUserProfile = (userId: string) => {
     return MOCK_USER_PROFILES.find(p => p.id === userId);
 };
-import { PARTICIPATION_LABELS } from "@/types/participation";
+import { PARTICIPATION_LABELS, ACTIVITY_STATUS_LABELS } from "@/types/participation";
 
 type CategoryType = "companion" | "taxi" | "meal" | "lodge" | "transfer" | "tip" | "question" | "crew";
 
@@ -89,19 +90,29 @@ export default function CommunityPage() {
         acceptRequest,
         declineRequest,
         cancelRequest,
+        getActiveActivities,
+        getActiveCount,
     } = useParticipation();
 
     // 내 참여 모달 상태
     const [isMyParticipationOpen, setIsMyParticipationOpen] = useState(false);
-    const [participationSubTab, setParticipationSubTab] = useState<"received" | "sent">("received");
+    const [participationSubTab, setParticipationSubTab] = useState<"active" | "received" | "sent">("active");
 
     // 내 참여 데이터
     const receivedRequests = useMemo(() => getReceivedRequests(), [getReceivedRequests]);
     const sentRequests = useMemo(() => getSentRequests(), [getSentRequests]);
+    const activeActivities = useMemo(() => getActiveActivities(), [getActiveActivities]);
     const totalPendingCount = getReceivedPendingCount() + getSentPendingCount();
+    const activeCount = getActiveCount();
 
     // 실제 로그인 또는 Dev 모드 로그인 상태 확인
     const isLoggedIn = !!user || isDevLoggedIn;
+
+    // Hydration 에러 방지: 클라이언트 마운트 상태
+    const [isMounted, setIsMounted] = useState(false);
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
     const [activeCategory, setActiveCategory] = useState<CategoryType>("companion");
 
     // 크루 필터 상태
@@ -379,9 +390,12 @@ export default function CommunityPage() {
                         >
                             <ClipboardList className="h-3.5 w-3.5" />
                             내 참여
-                            {totalPendingCount > 0 && (
-                                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-red-500 text-white">
-                                    {totalPendingCount}
+                            {(totalPendingCount > 0 || activeCount > 0) && (
+                                <span className={cn(
+                                    "px-1.5 py-0.5 rounded-full text-[10px] text-white",
+                                    totalPendingCount > 0 ? "bg-red-500" : "bg-green-500"
+                                )}>
+                                    {totalPendingCount > 0 ? totalPendingCount : activeCount}
                                 </span>
                             )}
                         </button>
@@ -598,13 +612,13 @@ export default function CommunityPage() {
 
                                 {/* 상세 정보 */}
                                 <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                                    {post.meetAt && (
+                                    {post.meetAt && isMounted && (
                                         <span className="flex items-center gap-1">
                                             <Clock className="h-3 w-3" />
                                             {formatMeetTime(post.meetAt)}
                                         </span>
                                     )}
-                                    {post.departAt && (
+                                    {post.departAt && isMounted && (
                                         <span className="flex items-center gap-1">
                                             <Car className="h-3 w-3" />
                                             {formatMeetTime(post.departAt)}
@@ -893,6 +907,23 @@ export default function CommunityPage() {
                         {/* 서브탭 */}
                         <div className="flex border-b">
                             <button
+                                onClick={() => setParticipationSubTab("active")}
+                                className={cn(
+                                    "flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2",
+                                    participationSubTab === "active"
+                                        ? "border-primary text-primary"
+                                        : "border-transparent text-muted-foreground hover:text-foreground"
+                                )}
+                            >
+                                <Play className="h-4 w-4" />
+                                참여 중
+                                {activeCount > 0 && (
+                                    <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-green-500 text-white">
+                                        {activeCount}
+                                    </span>
+                                )}
+                            </button>
+                            <button
                                 onClick={() => setParticipationSubTab("received")}
                                 className={cn(
                                     "flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2",
@@ -930,7 +961,118 @@ export default function CommunityPage() {
 
                         {/* 목록 */}
                         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                            {participationSubTab === "received" ? (
+                            {participationSubTab === "active" ? (
+                                // 참여 중인 활동
+                                activeActivities.length > 0 ? (
+                                    activeActivities.map((activity) => {
+                                        const post = getCommunityPosts().find(p => p.id === activity.postId);
+                                        const author = getUserProfile(activity.postAuthorId);
+                                        const postTypeInfo = PARTICIPATION_LABELS[activity.postType || "companion"];
+                                        const statusInfo = ACTIVITY_STATUS_LABELS[activity.activityStatus];
+
+                                        return (
+                                            <div
+                                                key={activity.id}
+                                                className={cn(
+                                                    "rounded-lg border bg-card p-4 transition-colors cursor-pointer hover:border-primary/50",
+                                                    activity.activityStatus === "ongoing" && "border-green-500 bg-green-50 dark:bg-green-900/10",
+                                                    activity.activityStatus === "completed" && "opacity-60"
+                                                )}
+                                                onClick={() => {
+                                                    // 원글로 이동
+                                                    if (post) {
+                                                        setIsMyParticipationOpen(false);
+                                                        setSelectedPost(post);
+                                                    }
+                                                }}
+                                            >
+                                                {/* 상단: 상태 + 타입 */}
+                                                <div className="flex items-center gap-2 mb-3">
+                                                    <span className="text-lg">{postTypeInfo?.icon || "📋"}</span>
+                                                    <span className="font-medium text-sm">
+                                                        {postTypeInfo?.noun || "활동"}
+                                                    </span>
+                                                    <span className={cn(
+                                                        "text-xs px-2 py-0.5 rounded-full font-medium",
+                                                        statusInfo.color === "green" && "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+                                                        statusInfo.color === "blue" && "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+                                                        statusInfo.color === "gray" && "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                                                    )}>
+                                                        {statusInfo.label}
+                                                    </span>
+                                                </div>
+
+                                                {/* 상대방 정보 */}
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm flex-shrink-0">
+                                                        {author?.avatar || "👤"}
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-sm font-medium">
+                                                            {author?.nickname || "알 수 없음"}
+                                                        </span>
+                                                        <span className="text-xs text-muted-foreground ml-1">
+                                                            님과 함께
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {/* 예정 시간 & 장소 */}
+                                                {(activity.scheduledAt || activity.activityLocation) && (
+                                                    <div className="bg-muted/50 rounded-lg p-3 space-y-1.5">
+                                                        {activity.scheduledAt && (
+                                                            <div className="flex items-center gap-2 text-sm">
+                                                                <Clock className="h-4 w-4 text-muted-foreground" />
+                                                                <span className="font-medium">
+                                                                    {new Intl.DateTimeFormat("ko-KR", {
+                                                                        month: "long",
+                                                                        day: "numeric",
+                                                                        weekday: "short",
+                                                                        hour: "2-digit",
+                                                                        minute: "2-digit",
+                                                                    }).format(new Date(activity.scheduledAt))}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {activity.activityLocation && (
+                                                            <div className="flex items-center gap-2 text-sm">
+                                                                <MapPin className="h-4 w-4 text-muted-foreground" />
+                                                                <span>{activity.activityLocation}</span>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleOpenMap(activity.activityLocation!);
+                                                                    }}
+                                                                    className="text-xs text-primary hover:underline flex items-center gap-0.5"
+                                                                >
+                                                                    <ExternalLink className="h-3 w-3" />
+                                                                    지도
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* 원글 보기 링크 */}
+                                                <div className="mt-3 pt-3 border-t flex items-center justify-between">
+                                                    <p className="text-xs text-muted-foreground line-clamp-1 flex-1">
+                                                        {post?.content.slice(0, 40) || "글을 찾을 수 없음"}...
+                                                    </p>
+                                                    <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                ) : (
+                                    <div className="text-center py-12">
+                                        <Play className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
+                                        <p className="text-muted-foreground font-medium">참여 중인 활동이 없어요</p>
+                                        <p className="text-sm text-muted-foreground mt-1">
+                                            동행/택시팟/밥약 등에 참여하면 여기에 표시돼요
+                                        </p>
+                                    </div>
+                                )
+                            ) : participationSubTab === "received" ? (
                                 // 받은 신청
                                 receivedRequests.length > 0 ? (
                                     receivedRequests.map((req) => {
