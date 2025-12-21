@@ -12,59 +12,119 @@ import {
     ParticipationRequest,
     ParticipationStatus,
     CreateParticipationInput,
+    ActivityStatus,
+    getActivityStatus,
 } from "@/types/participation";
 import { useDevContext } from "./dev-context";
 
 // ===== Mock 참여 신청 데이터 =====
 
+// 내일 18:00
+const tomorrow18 = new Date();
+tomorrow18.setDate(tomorrow18.getDate() + 1);
+tomorrow18.setHours(18, 0, 0, 0);
+
+// 내일 19:30
+const tomorrow1930 = new Date();
+tomorrow1930.setDate(tomorrow1930.getDate() + 1);
+tomorrow1930.setHours(19, 30, 0, 0);
+
+// 오늘 +3시간
+const today3h = new Date(Date.now() + 3 * 60 * 60 * 1000);
+
+// 모레
+const dayAfterTomorrow = new Date();
+dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
+dayAfterTomorrow.setHours(14, 0, 0, 0);
+
 export const MOCK_PARTICIPATION_REQUESTS: ParticipationRequest[] = [
     {
         id: "pr1",
         applicantId: "user2",
-        postId: "p1", // 동행 글
-        postAuthorId: "user1",
-        message: "저도 펜타포트 2일차 가요! 같이 가면 좋겠어요",
+        postId: "post3", // 동행 글 (서울재즈페스티벌)
+        postAuthorId: "user3",
+        postType: "companion",
+        message: "저도 재즈페스티벌 가요! 같이 가면 좋겠어요",
         status: "pending",
         createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000), // 3시간 전
     },
     {
         id: "pr2",
-        applicantId: "user3",
-        postId: "p1",
-        postAuthorId: "user1",
+        applicantId: "user4",
+        postId: "post3", // 동행 글
+        postAuthorId: "user3",
+        postType: "companion",
         status: "pending",
         createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000), // 5시간 전
     },
     {
         id: "pr3",
         applicantId: "user1",
-        postId: "p2", // 택시 글
+        postId: "post4", // 택시 글 (올림픽공원 → 강남역)
         postAuthorId: "user4",
-        message: "인천역에서 탈게요!",
+        postType: "taxi",
+        message: "저도 강남 방향이에요!",
         status: "accepted",
         createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1일 전
         respondedAt: new Date(Date.now() - 20 * 60 * 60 * 1000),
+        scheduledAt: tomorrow18,
+        activityLocation: "올림픽공원 평화의 광장",
     },
     {
         id: "pr4",
         applicantId: "user1",
-        postId: "p5", // 밥 글
-        postAuthorId: "user2",
-        status: "pending",
+        postId: "post5", // 밥 글 (공연 전 저녁)
+        postAuthorId: "user5",
+        postType: "meal",
+        status: "accepted",
         createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2시간 전
+        respondedAt: new Date(Date.now() - 1 * 60 * 60 * 1000),
+        scheduledAt: tomorrow1930,
+        activityLocation: "올림픽공원역 9번 출구",
     },
     {
         id: "pr5",
         applicantId: "user5",
-        postId: "p3", // 숙소 글 (user1이 작성자)
-        postAuthorId: "user1",
+        postId: "post6", // 숙소 글 (잠실역 근처)
+        postAuthorId: "user6",
+        postType: "lodge",
         message: "숙소 쉐어 가능할까요? 조용한 편이에요",
         status: "pending",
         createdAt: new Date(Date.now() - 1 * 60 * 60 * 1000), // 1시간 전
     },
+    {
+        id: "pr6",
+        applicantId: "user1",
+        postId: "post6", // 숙소 글 (잠실역 근처) - user6이 작성
+        postAuthorId: "user6",
+        postType: "lodge",
+        message: "숙소 쉐어 가능할까요?",
+        status: "accepted",
+        createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000),
+        respondedAt: new Date(Date.now() - 46 * 60 * 60 * 1000),
+        scheduledAt: dayAfterTomorrow,
+        activityLocation: "잠실역 4번 출구",
+    },
+    {
+        id: "pr7",
+        applicantId: "user1",
+        postId: "post3", // 동행 글 (서울재즈페스티벌)
+        postAuthorId: "user3",
+        postType: "companion",
+        status: "accepted",
+        createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000),
+        respondedAt: new Date(Date.now() - 10 * 60 * 60 * 1000),
+        scheduledAt: today3h,
+        activityLocation: "올림픽공원 정문",
+    },
 ];
 
 // ===== Context =====
+
+/** 참여 중인 활동 (날짜별 그룹) */
+export interface ActiveActivity extends ParticipationRequest {
+    activityStatus: ActivityStatus;
+}
 
 interface ParticipationContextValue {
     /** 현재 사용자 ID */
@@ -91,6 +151,10 @@ interface ParticipationContextValue {
     getSentPendingCount: () => number;
     /** 특정 글에 온 신청 목록 */
     getRequestsForPost: (postId: string) => ParticipationRequest[];
+    /** 참여 중인 활동 목록 (수락된 것만, 날짜순) */
+    getActiveActivities: () => ActiveActivity[];
+    /** 참여 중인 활동 수 */
+    getActiveCount: () => number;
 }
 
 const ParticipationContext = createContext<ParticipationContextValue | null>(null);
@@ -241,6 +305,41 @@ export function ParticipationProvider({ children }: { children: ReactNode }) {
         [requests]
     );
 
+    // 참여 중인 활동 목록 (수락된 것만, 예정 시간순)
+    const getActiveActivities = useCallback((): ActiveActivity[] => {
+        const now = new Date();
+        return requests
+            .filter(
+                (r) =>
+                    r.applicantId === currentUserId &&
+                    r.status === "accepted"
+            )
+            .map((r) => ({
+                ...r,
+                activityStatus: getActivityStatus(r.scheduledAt, now),
+            }))
+            .sort((a, b) => {
+                // 진행중 > 예정 > 완료 순서
+                const statusOrder = { ongoing: 0, upcoming: 1, completed: 2 };
+                const orderDiff = statusOrder[a.activityStatus] - statusOrder[b.activityStatus];
+                if (orderDiff !== 0) return orderDiff;
+                // 같은 상태면 시간순
+                const aTime = a.scheduledAt ? new Date(a.scheduledAt).getTime() : Infinity;
+                const bTime = b.scheduledAt ? new Date(b.scheduledAt).getTime() : Infinity;
+                return aTime - bTime;
+            });
+    }, [requests, currentUserId]);
+
+    // 참여 중인 활동 수 (완료되지 않은 것만)
+    const getActiveCount = useCallback((): number => {
+        const now = new Date();
+        return requests.filter((r) => {
+            if (r.applicantId !== currentUserId || r.status !== "accepted") return false;
+            const status = getActivityStatus(r.scheduledAt, now);
+            return status !== "completed";
+        }).length;
+    }, [requests, currentUserId]);
+
     return (
         <ParticipationContext.Provider
             value={{
@@ -256,6 +355,8 @@ export function ParticipationProvider({ children }: { children: ReactNode }) {
                 getReceivedPendingCount,
                 getSentPendingCount,
                 getRequestsForPost,
+                getActiveActivities,
+                getActiveCount,
             }}
         >
             {children}
