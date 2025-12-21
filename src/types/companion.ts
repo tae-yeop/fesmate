@@ -16,6 +16,8 @@ export interface CompanionRequest {
     toUserId: string;
     /** 대상 행사 ID */
     eventId: string;
+    /** 함께 보려는 슬롯 ID 목록 (타임테이블에서 "같이 볼까요?" 제안 시) */
+    slotIds?: string[];
     /** 메시지 (선택) */
     message?: string;
     /** 상태 */
@@ -30,6 +32,7 @@ export interface CompanionRequest {
 export interface CreateCompanionRequestInput {
     toUserId: string;
     eventId: string;
+    slotIds?: string[];
     message?: string;
 }
 

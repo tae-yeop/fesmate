@@ -119,6 +119,7 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
                 fromUserId: currentUserId,
                 toUserId: input.toUserId,
                 eventId: input.eventId,
+                slotIds: input.slotIds,
                 message: input.message,
                 status: "pending",
                 createdAt: new Date(),
