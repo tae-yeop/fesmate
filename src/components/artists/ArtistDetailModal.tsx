@@ -1,8 +1,10 @@
 "use client";
 
-import { X, Instagram, Youtube, Music, ExternalLink, Mic2, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { X, Instagram, Youtube, Music, ExternalLink, Mic2, Sparkles, NotebookPen, ChevronRight } from "lucide-react";
 import { Artist, ArtistSocialLink } from "@/types/event";
 import { cn } from "@/lib/utils";
+import { findCallGuideArtistByName } from "@/lib/mock-call-guide";
 
 interface ArtistDetailModalProps {
     artist: Artist;
@@ -36,6 +38,9 @@ const SOCIAL_COLORS: Record<ArtistSocialLink["type"], string> = {
 
 export function ArtistDetailModal({ artist, isOpen, onClose }: ArtistDetailModalProps) {
     if (!isOpen) return null;
+
+    // 콜가이드 아티스트 정보 확인
+    const callGuideArtist = findCallGuideArtistByName(artist.name);
 
     return (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
@@ -123,6 +128,25 @@ export function ArtistDetailModal({ artist, isOpen, onClose }: ArtistDetailModal
                             </div>
                             <p className="text-sm leading-relaxed">{artist.fanchant}</p>
                         </div>
+                    )}
+
+                    {/* FieldNote 링크 */}
+                    {callGuideArtist && (
+                        <Link
+                            href={`/fieldnote/artist/${callGuideArtist.id}`}
+                            className="flex items-center gap-3 mb-4 p-4 rounded-xl bg-gradient-to-r from-purple-50 to-purple-100 border border-purple-200 hover:from-purple-100 hover:to-purple-150 transition-colors"
+                        >
+                            <div className="w-10 h-10 rounded-full bg-purple-500 flex items-center justify-center shrink-0">
+                                <NotebookPen className="h-5 w-5 text-white" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="font-bold text-sm text-purple-900">곡별 호응법 가이드</p>
+                                <p className="text-xs text-purple-600">
+                                    {callGuideArtist.songCount}곡 · {callGuideArtist.guideCount}개 가이드
+                                </p>
+                            </div>
+                            <ChevronRight className="h-5 w-5 text-purple-400 shrink-0" />
+                        </Link>
                     )}
 
                     {/* Popular Songs */}

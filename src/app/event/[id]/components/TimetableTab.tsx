@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Clock, Star, ChevronRight, Calendar, MapPin, Plus, List, AlertTriangle, X, LayoutGrid, ListIcon, Download, Users, UserPlus, CheckCircle } from "lucide-react";
+import { Clock, Star, ChevronRight, Calendar, MapPin, Plus, List, AlertTriangle, X, LayoutGrid, ListIcon, Download, Users, UserPlus, CheckCircle, NotebookPen } from "lucide-react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Event, Slot } from "@/types/event";
 import { formatTime } from "@/lib/utils/date-format";
@@ -11,6 +12,7 @@ import { useFollow } from "@/lib/follow-context";
 import { MyTimetableView, CustomEventModal } from "@/components/timetable";
 import { SlotMarkType, SLOT_MARK_PRESETS } from "@/types/my-timetable";
 import { downloadICS, getExportSummary } from "@/lib/utils/ics-export";
+import { findCallGuideArtistByName } from "@/lib/mock-call-guide";
 
 interface TimetableTabProps {
     event: Event;
@@ -49,6 +51,7 @@ interface FriendWithSlot {
 function SlotMarkMenu({
     slotId,
     slotTitle,
+    artistName,
     currentMark,
     onSelect,
     onClear,
@@ -58,6 +61,7 @@ function SlotMarkMenu({
 }: {
     slotId: string;
     slotTitle: string;
+    artistName?: string;
     currentMark?: SlotMarkType;
     onSelect: (type: SlotMarkType) => void;
     onClear: () => void;
@@ -66,6 +70,9 @@ function SlotMarkMenu({
     onToggleFriend: (userId: string, nickname: string) => void;
 }) {
     const menuRef = useRef<HTMLDivElement>(null);
+
+    // 아티스트 콜가이드 정보 확인
+    const callGuideArtist = artistName ? findCallGuideArtistByName(artistName) : undefined;
 
     // 바깥 클릭 시 닫기
     useEffect(() => {
@@ -131,6 +138,25 @@ function SlotMarkMenu({
                         >
                             표시 제거
                         </button>
+                    )}
+
+                    {/* 호응법 바로가기 */}
+                    {callGuideArtist && (
+                        <Link
+                            href={`/fieldnote/artist/${callGuideArtist.id}`}
+                            className="flex items-center gap-3 w-full mt-3 p-3 rounded-xl bg-purple-50 border border-purple-200 hover:bg-purple-100 transition-colors"
+                        >
+                            <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center">
+                                <NotebookPen className="h-4 w-4 text-white" />
+                            </div>
+                            <div className="flex-1 text-left">
+                                <p className="text-sm font-medium text-purple-900">호응법 보기</p>
+                                <p className="text-xs text-purple-600">
+                                    {callGuideArtist.name} · {callGuideArtist.guideCount}개 가이드
+                                </p>
+                            </div>
+                            <ChevronRight className="h-5 w-5 text-purple-400" />
+                        </Link>
                     )}
                 </div>
 
@@ -1198,6 +1224,7 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
                 <SlotMarkMenu
                     slotId={markingSlot.id}
                     slotTitle={markingSlot.title || markingSlot.artist?.name || "슬롯"}
+                    artistName={markingSlot.artist?.name}
                     currentMark={getSlotMark(event.id, markingSlot.id)?.type}
                     onSelect={(type) => handleMarkSlot(markingSlot.id, type)}
                     onClear={() => handleClearMark(markingSlot.id)}
