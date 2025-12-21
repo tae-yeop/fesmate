@@ -194,6 +194,8 @@ interface FollowContextValue {
     getFollowerCount: (userId: string) => number;
     /** 팔로잉 수 */
     getFollowingCount: (userId: string) => number;
+    /** 현재 사용자와 특정 사용자가 맞팔인지 확인 */
+    isMutualFollow: (targetUserId: string) => boolean;
 }
 
 const FollowContext = createContext<FollowContextValue | null>(null);
@@ -335,6 +337,17 @@ export function FollowProvider({ children }: { children: ReactNode }) {
         return follows.filter(f => f.followerId === userId).length;
     }, [follows]);
 
+    // 현재 사용자와 특정 사용자가 맞팔인지 확인
+    const isMutualFollow = useCallback((targetUserId: string): boolean => {
+        const iFollow = follows.some(
+            f => f.followerId === currentUserId && f.followingId === targetUserId
+        );
+        const theyFollow = follows.some(
+            f => f.followerId === targetUserId && f.followingId === currentUserId
+        );
+        return iFollow && theyFollow;
+    }, [follows, currentUserId]);
+
     return (
         <FollowContext.Provider
             value={{
@@ -350,6 +363,7 @@ export function FollowProvider({ children }: { children: ReactNode }) {
                 getSuggestedUsers,
                 getFollowerCount,
                 getFollowingCount,
+                isMutualFollow,
             }}
         >
             {children}

@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
+import { useDevContext } from "./dev-context";
 
 interface WishlistContextType {
     // 찜 목록
@@ -14,54 +15,98 @@ interface WishlistContextType {
     // 상태 확인
     isWishlist: (eventId: string) => boolean;
     isAttended: (eventId: string) => boolean;
+    // 특정 사용자의 찜/다녀온 목록 조회
+    getUserWishlist: (userId: string) => Set<string>;
+    getUserAttended: (userId: string) => Set<string>;
 }
 
 const WishlistContext = createContext<WishlistContextType | undefined>(undefined);
 
-const WISHLIST_STORAGE_KEY = "fesmate_wishlist";
-const ATTENDED_STORAGE_KEY = "fesmate_attended";
+// 사용자별 storage key 생성
+const getWishlistStorageKey = (userId: string) => `fesmate_wishlist_${userId}`;
+const getAttendedStorageKey = (userId: string) => `fesmate_attended_${userId}`;
+
+// Mock: 다른 사용자들의 찜/다녀온 행사 데이터 (실제로는 서버에서 가져와야 함)
+const MOCK_USER_EVENTS: Record<string, { wishlist: string[]; attended: string[] }> = {
+    user1: { wishlist: ["55948", "e2", "pentaport"], attended: ["24016943", "e2"] },
+    user2: { wishlist: ["55948", "e2"], attended: ["24016943", "e2"] },
+    user3: { wishlist: ["e2", "pentaport", "24016943"], attended: ["55948"] },
+    user4: { wishlist: ["55948", "pentaport"], attended: ["e2", "24016943"] },
+    user5: { wishlist: ["e2"], attended: [] },
+    user6: { wishlist: ["pentaport"], attended: ["55948", "e2"] },
+};
 
 export function WishlistProvider({ children }: { children: ReactNode }) {
+    const { mockUserId } = useDevContext();
+    const currentUserId = mockUserId || "user1";
+
     const [wishlist, setWishlist] = useState<Set<string>>(new Set());
     const [attended, setAttended] = useState<Set<string>>(new Set());
     const [isLoaded, setIsLoaded] = useState(false);
+    const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
 
-    // localStorage에서 로드
+    // 사용자 변경 또는 초기 로드 시 localStorage에서 로드
     useEffect(() => {
-        try {
-            const savedWishlist = localStorage.getItem(WISHLIST_STORAGE_KEY);
-            const savedAttended = localStorage.getItem(ATTENDED_STORAGE_KEY);
+        // 사용자가 변경되었거나 처음 로드하는 경우
+        if (loadedUserId !== currentUserId) {
+            try {
+                const wishlistKey = getWishlistStorageKey(currentUserId);
+                const attendedKey = getAttendedStorageKey(currentUserId);
 
-            if (savedWishlist) {
-                setWishlist(new Set(JSON.parse(savedWishlist)));
+                const savedWishlist = localStorage.getItem(wishlistKey);
+                const savedAttended = localStorage.getItem(attendedKey);
+
+                if (savedWishlist) {
+                    setWishlist(new Set(JSON.parse(savedWishlist)));
+                } else {
+                    // 저장된 데이터가 없으면 Mock 데이터로 초기화
+                    const mockData = MOCK_USER_EVENTS[currentUserId];
+                    if (mockData) {
+                        setWishlist(new Set(mockData.wishlist));
+                    } else {
+                        setWishlist(new Set());
+                    }
+                }
+
+                if (savedAttended) {
+                    setAttended(new Set(JSON.parse(savedAttended)));
+                } else {
+                    // 저장된 데이터가 없으면 Mock 데이터로 초기화
+                    const mockData = MOCK_USER_EVENTS[currentUserId];
+                    if (mockData) {
+                        setAttended(new Set(mockData.attended));
+                    } else {
+                        setAttended(new Set());
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to load wishlist from localStorage:", e);
             }
-            if (savedAttended) {
-                setAttended(new Set(JSON.parse(savedAttended)));
-            }
-        } catch (e) {
-            console.error("Failed to load wishlist from localStorage:", e);
+            setLoadedUserId(currentUserId);
+            setIsLoaded(true);
         }
-        setIsLoaded(true);
-    }, []);
+    }, [currentUserId, loadedUserId]);
 
-    // localStorage에 저장
+    // localStorage에 저장 (현재 사용자의 데이터만)
     useEffect(() => {
-        if (!isLoaded) return;
+        if (!isLoaded || loadedUserId !== currentUserId) return;
         try {
-            localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify([...wishlist]));
+            const wishlistKey = getWishlistStorageKey(currentUserId);
+            localStorage.setItem(wishlistKey, JSON.stringify([...wishlist]));
         } catch (e) {
             console.error("Failed to save wishlist to localStorage:", e);
         }
-    }, [wishlist, isLoaded]);
+    }, [wishlist, isLoaded, currentUserId, loadedUserId]);
 
     useEffect(() => {
-        if (!isLoaded) return;
+        if (!isLoaded || loadedUserId !== currentUserId) return;
         try {
-            localStorage.setItem(ATTENDED_STORAGE_KEY, JSON.stringify([...attended]));
+            const attendedKey = getAttendedStorageKey(currentUserId);
+            localStorage.setItem(attendedKey, JSON.stringify([...attended]));
         } catch (e) {
             console.error("Failed to save attended to localStorage:", e);
         }
-    }, [attended, isLoaded]);
+    }, [attended, isLoaded, currentUserId, loadedUserId]);
 
     // 찜 토글
     const toggleWishlist = useCallback((eventId: string) => {
@@ -93,6 +138,46 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
     const isWishlistFn = useCallback((eventId: string) => wishlist.has(eventId), [wishlist]);
     const isAttendedFn = useCallback((eventId: string) => attended.has(eventId), [attended]);
 
+    // 특정 사용자의 찜 목록 조회
+    const getUserWishlist = useCallback((userId: string): Set<string> => {
+        if (userId === currentUserId) {
+            return wishlist;
+        }
+        // 다른 사용자: localStorage 또는 Mock 데이터
+        try {
+            const key = getWishlistStorageKey(userId);
+            const saved = localStorage.getItem(key);
+            if (saved) {
+                return new Set(JSON.parse(saved));
+            }
+        } catch (e) {
+            console.error("Failed to load user wishlist:", e);
+        }
+        // localStorage에 없으면 Mock 데이터
+        const mockData = MOCK_USER_EVENTS[userId];
+        return new Set(mockData?.wishlist || []);
+    }, [currentUserId, wishlist]);
+
+    // 특정 사용자의 다녀온 목록 조회
+    const getUserAttended = useCallback((userId: string): Set<string> => {
+        if (userId === currentUserId) {
+            return attended;
+        }
+        // 다른 사용자: localStorage 또는 Mock 데이터
+        try {
+            const key = getAttendedStorageKey(userId);
+            const saved = localStorage.getItem(key);
+            if (saved) {
+                return new Set(JSON.parse(saved));
+            }
+        } catch (e) {
+            console.error("Failed to load user attended:", e);
+        }
+        // localStorage에 없으면 Mock 데이터
+        const mockData = MOCK_USER_EVENTS[userId];
+        return new Set(mockData?.attended || []);
+    }, [currentUserId, attended]);
+
     return (
         <WishlistContext.Provider
             value={{
@@ -102,6 +187,8 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
                 toggleAttended,
                 isWishlist: isWishlistFn,
                 isAttended: isAttendedFn,
+                getUserWishlist,
+                getUserAttended,
             }}
         >
             {children}

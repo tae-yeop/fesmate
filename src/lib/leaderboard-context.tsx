@@ -132,8 +132,9 @@ export function LeaderboardProvider({ children }: { children: ReactNode }) {
         scores.sort((a, b) => b.totalScore - a.totalScore);
         scores.forEach((score, index) => {
             score.rank = index + 1;
-            // 랭킹 변화 시뮬레이션 (Mock)
-            score.rankChange = Math.floor(Math.random() * 5) - 2; // -2 ~ +2
+            // 랭킹 변화 시뮬레이션 (Mock) - 결정적인 값 사용 (hydration 에러 방지)
+            const mockChanges = [2, -1, 1, 0, -2, 1];
+            score.rankChange = mockChanges[index % mockChanges.length];
         });
 
         return scores;
