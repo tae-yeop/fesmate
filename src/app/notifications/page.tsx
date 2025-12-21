@@ -15,6 +15,10 @@ import {
     ChevronLeft,
     Check,
     Trash2,
+    CheckCircle,
+    Ban,
+    RefreshCw,
+    AlarmClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getNotifications, MOCK_NOTIFICATIONS } from "@/lib/mock-data";
@@ -35,6 +39,11 @@ const ICON_MAP: Record<string, React.ElementType> = {
     TrendingUp: AlertCircle, // fallback
     Shield: AlertCircle,     // fallback
     CalendarClock: Calendar, // fallback
+    // 참여 관련 아이콘
+    CheckCircle,
+    Ban,
+    RefreshCw,
+    AlarmClock,
 };
 
 /**
