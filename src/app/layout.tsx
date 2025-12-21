@@ -21,6 +21,7 @@ import { JoinProvider } from "@/lib/join-context";
 import { CompanionProvider } from "@/lib/companion-context";
 import { ParticipationProvider } from "@/lib/participation-context";
 import { NotificationProvider } from "@/lib/notification-context";
+import { CallGuideProvider } from "@/lib/call-guide-context";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -64,6 +65,7 @@ export default function RootLayout({
                       <CompanionProvider>
                       <ParticipationProvider>
                       <NotificationProvider>
+                      <CallGuideProvider>
                       <DevStatusBar />
                       <div className="relative flex min-h-screen flex-col">
                         <Header />
@@ -72,6 +74,7 @@ export default function RootLayout({
                         <DevPanel />
                         <BadgeToast />
                       </div>
+                      </CallGuideProvider>
                       </NotificationProvider>
                       </ParticipationProvider>
                       </CompanionProvider>

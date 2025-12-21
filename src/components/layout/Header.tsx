@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Search, Bell, User, Home, Users, CalendarHeart, LogOut, Settings } from "lucide-react";
+import { Search, Bell, User, Home, Users, CalendarHeart, LogOut, Settings, NotebookPen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { useDevContext } from "@/lib/dev-context";
@@ -13,7 +13,7 @@ import { getUnreadNotificationCount } from "@/lib/mock-data";
 /**
  * 헤더 컴포넌트 - PRD v0.5 기준
  * 모바일: 로고 + 검색 + 알림 + 프로필
- * 데스크톱: 로고 + 4탭 네비게이션 + 검색 + 알림 + 프로필
+ * 데스크톱: 로고 + 5탭 네비게이션 + 검색 + 알림 + 프로필
  */
 export function Header() {
     const pathname = usePathname();
@@ -28,6 +28,7 @@ export function Header() {
     const navItems = [
         { title: "홈", href: "/", icon: Home },
         { title: "탐색", href: "/explore", icon: Search },
+        { title: "노트", href: "/fieldnote", icon: NotebookPen },
         { title: "커뮤니티", href: "/community", icon: Users },
         { title: "MyFes", href: "/myfes", icon: CalendarHeart },
     ];
