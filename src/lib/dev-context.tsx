@@ -6,7 +6,7 @@ import type { Event, Slot } from "@/types/event";
 import type { Post } from "@/types/post";
 
 /** 시나리오 타입 (PRD 6.12) */
-export type ScenarioType = "A" | "B" | "C" | "D" | "E" | "F";
+export type ScenarioType = "A" | "B" | "C" | "D" | "E" | "F" | "G";
 
 /** 시나리오 설명 */
 export const SCENARIO_INFO: Record<ScenarioType, { label: string; description: string }> = {
@@ -16,6 +16,7 @@ export const SCENARIO_INFO: Record<ScenarioType, { label: string; description: s
     D: { label: "취소", description: "CANCELED 상태" },
     E: { label: "연기", description: "POSTPONED 상태" },
     F: { label: "해외", description: "Asia/Tokyo" },
+    G: { label: "펜타포트", description: "3일 3스테이지, 콜가이드 연동" },
 };
 
 /** Override 모드 */
