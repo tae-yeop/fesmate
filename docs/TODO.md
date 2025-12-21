@@ -231,12 +231,16 @@
 - [x] RECAP 모드 상단 요약 (평균 평점, 베스트 후기/영상)
 
 ### ✍️ 글 작성 고도화
-- [ ] 사진 업로드 (현재: UI만 있음)
+- [x] 사진 업로드 (LocalStorage 기반, Supabase 전환 준비 완료)
+  - 저장소 추상화 패턴 적용 (`ImageStorageAdapter`)
+  - 이미지 리사이즈/압축/썸네일 생성
+  - ImageUploader, ImageGallery 컴포넌트
+  - 기술 문서: `docs/tech/image_upload.md`
 - [x] 도움됨 버튼 실제 동작 (HelpfulContext + localStorage 저장)
 - [ ] 슬롯 리뷰/슬롯 영상 연결 ("이 행사에서의 무대" 귀속)
 
 ### 4.2 공통 기능
-- [ ] 사진 업로드 (최대 3~5장)
+- [x] 사진 업로드 (최대 5장, 리사이즈/압축 지원)
 - [x] 도움됨(Helpful) 반응 (HelpfulContext + localStorage 저장)
 - [x] 신뢰도(A/B/C) 표기 (MVP: 단순 규칙)
 
@@ -709,9 +713,10 @@ src/
 │   ├── layout/               # Header, MobileNav
 │   ├── events/               # EventCard, EventListItem, EventCalendarView
 │   ├── posts/                # PostComposer, PostDetailModal
+│   ├── image/                # ImageUploader, ImageGallery ← 신규
 │   ├── maps/                 # MapActionSheet
 │   ├── safety/               # ReportModal, BlockConfirmModal, PostActionMenu
-│   ├── timetable/            # CustomEventModal, MyTimetableView ← 신규
+│   ├── timetable/            # CustomEventModal, MyTimetableView
 │   └── dev/                  # DevPanel
 ├── lib/
 │   ├── mock-data.ts          # Mock 데이터
@@ -724,6 +729,7 @@ src/
 │   ├── companion-context.tsx  # CompanionProvider (1:1 동행 제안)
 │   ├── participation-context.tsx # ParticipationProvider (글 기반 참여 신청)
 │   ├── dev-context.tsx       # DevProvider (시나리오/시간 시뮬레이터)
+│   ├── storage/              # 이미지 저장소 (LocalStorage/Supabase 추상화) ← 신규
 │   ├── utils/                # date-format.ts, map-deeplink.ts, contact-mask.ts
 │   ├── constants/            # styles.ts
 │   └── supabase/             # client.ts, server.ts
@@ -733,6 +739,7 @@ src/
     ├── notification.ts
     ├── report.ts
     ├── comment.ts
+    ├── image.ts                # 이미지 업로드 타입 ← 신규
     ├── my-timetable.ts         # 나만의 타임테이블 타입
     ├── companion.ts            # 1:1 동행 제안 타입
     └── participation.ts        # 글 기반 참여 신청 타입
@@ -745,5 +752,6 @@ docs/
 ├── TODO.md                   # 이 파일
 └── tech/
     ├── maps_deeplink.md      # 지도 딥링크 설계
+    ├── image_upload.md       # 이미지 업로드 시스템 ← 신규
     └── ingestion_crawling.md # 데이터 수집 파이프라인 (Future)
 ```

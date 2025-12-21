@@ -20,14 +20,16 @@ import {
     Star,
     Video,
     HelpCircle,
-    Camera,
+    ImagePlus,
     Send,
     LogIn,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PostType, POST_TYPE_LABELS } from "@/types/post";
+import { UploadedImage } from "@/types/image";
 import { useAuth } from "@/lib/auth-context";
 import { useDevContext } from "@/lib/dev-context";
+import { ImageUploader } from "@/components/image";
 
 interface PostComposerProps {
     isOpen: boolean;
@@ -104,7 +106,8 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType
     const [step, setStep] = useState<"select" | "compose">(initialType || isEditMode ? "compose" : "select");
     const [selectedType, setSelectedType] = useState<PostType | null>(initialType || null);
     const [content, setContent] = useState(editPost?.content || "");
-    const [images, setImages] = useState<string[]>([]);
+    const [images, setImages] = useState<UploadedImage[]>([]);
+    const [showImageUploader, setShowImageUploader] = useState(false);
 
     // 커뮤니티용 추가 필드
     const [meetTime, setMeetTime] = useState(editPost?.meetTime || "");
@@ -191,11 +194,13 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType
             });
         } else {
             // 신규 작성 모드
+            // 이미지 URL 배열로 변환 (나중에 백엔드로 전송 시 사용)
+            const imageUrls = images.map(img => img.url);
             console.log({
                 eventId,
                 type: selectedType,
                 content,
-                images,
+                images: imageUrls,
                 meetTime,
                 placeText,
                 placeHint,
@@ -289,18 +294,41 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, initialType
 
                 {/* 하단 액션 (compose 단계에서만) */}
                 {step === "compose" && (
-                    <div className="px-4 py-3 border-t flex items-center justify-between">
-                        <button className="p-2 hover:bg-accent rounded">
-                            <Camera className="h-5 w-5 text-muted-foreground" />
-                        </button>
-                        <button
-                            onClick={handleSubmit}
-                            disabled={!isValid()}
-                            className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-full text-sm font-medium disabled:opacity-50"
-                        >
-                            <Send className="h-4 w-4" />
-                            {isEditMode ? "수정하기" : "올리기"}
-                        </button>
+                    <div className="border-t">
+                        {/* 이미지 업로더 (토글) */}
+                        {showImageUploader && (
+                            <div className="px-4 pt-3 pb-1 border-b bg-muted/30">
+                                <ImageUploader
+                                    images={images}
+                                    onChange={setImages}
+                                    maxImages={5}
+                                />
+                            </div>
+                        )}
+                        <div className="px-4 py-3 flex items-center justify-between">
+                            <button
+                                onClick={() => setShowImageUploader(!showImageUploader)}
+                                className={cn(
+                                    "p-2 rounded transition-colors flex items-center gap-1.5",
+                                    showImageUploader
+                                        ? "bg-primary/10 text-primary"
+                                        : "hover:bg-accent text-muted-foreground"
+                                )}
+                            >
+                                <ImagePlus className="h-5 w-5" />
+                                {images.length > 0 && (
+                                    <span className="text-xs font-medium">{images.length}</span>
+                                )}
+                            </button>
+                            <button
+                                onClick={handleSubmit}
+                                disabled={!isValid()}
+                                className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-full text-sm font-medium disabled:opacity-50"
+                            >
+                                <Send className="h-4 w-4" />
+                                {isEditMode ? "수정하기" : "올리기"}
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>
