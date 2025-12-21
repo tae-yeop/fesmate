@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Star, Plus, Trash2, Edit2, AlertTriangle, Share2, Users, X, Copy, Check, Link } from "lucide-react";
+import { Star, Plus, Trash2, Edit2, AlertTriangle, Users, X, Heart, UserPlus, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Event, Slot } from "@/types/event";
 import { TimetableItem, CUSTOM_EVENT_PRESETS, CustomEvent, TimeConflict, SLOT_MARK_PRESETS } from "@/types/my-timetable";
 import { formatTime } from "@/lib/utils/date-format";
 import { useMyTimetable } from "@/lib/my-timetable-context";
 import { CustomEventModal } from "./CustomEventModal";
+import { WatchTogetherModal } from "./WatchTogetherModal";
 import { useDevContext } from "@/lib/dev-context";
+import { useFollow } from "@/lib/follow-context";
 
 interface MyTimetableViewProps {
     event: Event;
@@ -17,7 +19,7 @@ interface MyTimetableViewProps {
 }
 
 export function MyTimetableView({ event, slots, onClose }: MyTimetableViewProps) {
-    const { getNow, isLoggedIn, mockUserId } = useDevContext();
+    const { getNow } = useDevContext();
     const now = getNow();
     const {
         getTimetableItems,
@@ -25,21 +27,23 @@ export function MyTimetableView({ event, slots, onClose }: MyTimetableViewProps)
         deleteCustomEvent,
         getCustomEvents,
         getMarkedSlots,
-        createShareLink,
         getSharedTimetables,
         removeSharedTimetable,
         getOverlayItems,
         addCustomEvent,
         updateCustomEvent,
+        getFriendTimetable,
+        addFriendToOverlay,
+        removeFriendFromOverlay,
+        getOverlayFriends,
     } = useMyTimetable();
+    const { getFriends } = useFollow();
 
     const [showAddModal, setShowAddModal] = useState(false);
     const [editingEvent, setEditingEvent] = useState<CustomEvent | undefined>();
-    const [showShareModal, setShowShareModal] = useState(false);
+    const [showFriendModal, setShowFriendModal] = useState(false);
     const [showOverlay, setShowOverlay] = useState(false);
-    const [shareLink, setShareLink] = useState("");
-    const [copied, setCopied] = useState(false);
-    const [nickname, setNickname] = useState("");
+    const [showWatchTogetherModal, setShowWatchTogetherModal] = useState(false);
 
     // 내 타임테이블 아이템
     const myItems = useMemo(() => {
@@ -51,10 +55,31 @@ export function MyTimetableView({ event, slots, onClose }: MyTimetableViewProps)
         return getConflicts(event.id, slots);
     }, [event.id, slots, getConflicts]);
 
-    // 공유된 타임테이블
+    // 공유된 타임테이블 (기존 링크 방식)
     const sharedTimetables = useMemo(() => {
         return getSharedTimetables(event.id);
     }, [event.id, getSharedTimetables]);
+
+    // 오버레이에 추가된 친구 목록 (새로운 방식)
+    const overlayFriendsList = useMemo(() => {
+        return getOverlayFriends(event.id);
+    }, [event.id, getOverlayFriends]);
+
+    // 친구 목록 (타임테이블이 있는 친구만 표시)
+    const friendsWithTimetable = useMemo(() => {
+        const friends = getFriends();
+        return friends.filter(friend => {
+            const timetable = getFriendTimetable(friend.id, event.id);
+            return timetable && timetable.length > 0;
+        }).map(friend => ({
+            ...friend,
+            slotCount: getFriendTimetable(friend.id, event.id)?.length || 0,
+            isAdded: overlayFriendsList.some(f => f.userId === friend.id),
+        }));
+    }, [getFriends, getFriendTimetable, event.id, overlayFriendsList]);
+
+    // 함께 보기 활성화 가능 여부 (친구가 추가되어 있거나 공유 타임테이블이 있는 경우)
+    const canShowOverlay = overlayFriendsList.length > 0 || sharedTimetables.length > 0;
 
     // 오버레이 데이터
     const overlayData = useMemo(() => {
@@ -79,29 +104,13 @@ export function MyTimetableView({ event, slots, onClose }: MyTimetableViewProps)
         setEditingEvent(undefined);
     };
 
-    // 공유 링크 생성
-    const handleCreateShare = () => {
-        if (!nickname.trim()) return;
-        const link = createShareLink(event.id, nickname.trim());
-        setShareLink(link);
-    };
-
-    // 링크 복사
-    const handleCopyLink = async () => {
-        try {
-            await navigator.clipboard.writeText(shareLink);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-        } catch {
-            // fallback
-            const textarea = document.createElement("textarea");
-            textarea.value = shareLink;
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand("copy");
-            document.body.removeChild(textarea);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
+    // 친구 추가/제거
+    const handleToggleFriend = (userId: string, nickname: string) => {
+        const isAdded = overlayFriendsList.some(f => f.userId === userId);
+        if (isAdded) {
+            removeFriendFromOverlay(userId, event.id);
+        } else {
+            addFriendToOverlay(userId, nickname, event.id);
         }
     };
 
@@ -163,15 +172,22 @@ export function MyTimetableView({ event, slots, onClose }: MyTimetableViewProps)
                             <Plus className="h-4 w-4" />
                             일정 추가
                         </button>
-                        <button
-                            onClick={() => setShowShareModal(true)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 border rounded-full text-sm font-medium hover:bg-accent"
-                        >
-                            <Share2 className="h-4 w-4" />
-                            공유
-                        </button>
+                        {friendsWithTimetable.length > 0 && (
+                            <button
+                                onClick={() => setShowFriendModal(true)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 border rounded-full text-sm font-medium hover:bg-accent"
+                            >
+                                <UserPlus className="h-4 w-4" />
+                                친구 추가
+                                {overlayFriendsList.length > 0 && (
+                                    <span className="ml-1 px-1.5 py-0.5 bg-primary text-primary-foreground text-xs rounded-full">
+                                        {overlayFriendsList.length}
+                                    </span>
+                                )}
+                            </button>
+                        )}
                     </div>
-                    {sharedTimetables.length > 0 && (
+                    {canShowOverlay && (
                         <button
                             onClick={() => setShowOverlay(!showOverlay)}
                             className={cn(
@@ -182,7 +198,7 @@ export function MyTimetableView({ event, slots, onClose }: MyTimetableViewProps)
                             )}
                         >
                             <Users className="h-4 w-4" />
-                            함께 보기 ({sharedTimetables.length})
+                            함께 보기 ({overlayFriendsList.length + sharedTimetables.length})
                         </button>
                     )}
                 </div>
@@ -202,11 +218,22 @@ export function MyTimetableView({ event, slots, onClose }: MyTimetableViewProps)
                 {/* Together/Alone Summary (Overlay Mode) */}
                 {showOverlay && overlayData && (
                     <div className="mx-4 mt-3 p-3 rounded-lg bg-blue-50 border border-blue-200 space-y-2">
-                        <div className="flex items-center gap-2 text-blue-700">
-                            <Users className="h-4 w-4" />
-                            <span className="text-sm font-medium">
-                                함께 보는 슬롯: {overlayData.together.length}개
-                            </span>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-blue-700">
+                                <Users className="h-4 w-4" />
+                                <span className="text-sm font-medium">
+                                    함께 보는 슬롯: {overlayData.together.length}개
+                                </span>
+                            </div>
+                            {overlayData.together.length > 0 && (
+                                <button
+                                    onClick={() => setShowWatchTogetherModal(true)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-full text-xs font-medium hover:bg-blue-700 transition-colors"
+                                >
+                                    <Heart className="h-3.5 w-3.5" />
+                                    같이 볼까요?
+                                </button>
+                            )}
                         </div>
                         {overlayData.together.length > 0 && (
                             <div className="flex flex-wrap gap-1">
@@ -421,83 +448,91 @@ export function MyTimetableView({ event, slots, onClose }: MyTimetableViewProps)
                 editEvent={editingEvent}
             />
 
-            {/* Share Modal */}
-            {showShareModal && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-black/40" onClick={() => setShowShareModal(false)} />
-                    <div className="relative z-10 w-full max-w-sm bg-card rounded-2xl p-5 space-y-4">
-                        <h3 className="text-lg font-bold flex items-center gap-2">
-                            <Share2 className="h-5 w-5" />
-                            타임테이블 공유
-                        </h3>
+            {/* Watch Together Modal */}
+            {showOverlay && overlayData && (
+                <WatchTogetherModal
+                    isOpen={showWatchTogetherModal}
+                    onClose={() => setShowWatchTogetherModal(false)}
+                    eventId={event.id}
+                    eventTitle={event.title}
+                    togetherSlots={overlayData.together}
+                    sharedTimetables={sharedTimetables}
+                />
+            )}
 
-                        {!shareLink ? (
-                            <>
+            {/* Friend Selection Modal */}
+            {showFriendModal && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/40" onClick={() => setShowFriendModal(false)} />
+                    <div className="relative z-10 w-full max-w-sm bg-card rounded-2xl overflow-hidden">
+                        <div className="p-4 border-b flex items-center justify-between">
+                            <h3 className="text-lg font-bold flex items-center gap-2">
+                                <UserPlus className="h-5 w-5" />
+                                친구 타임테이블 추가
+                            </h3>
+                            <button
+                                onClick={() => setShowFriendModal(false)}
+                                className="p-1 rounded-full hover:bg-muted"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-4 max-h-[60vh] overflow-y-auto">
+                            {friendsWithTimetable.length === 0 ? (
+                                <div className="text-center py-8 text-muted-foreground">
+                                    <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                                    <p className="text-sm font-medium mb-1">
+                                        이 행사에 타임테이블을 만든 친구가 없어요
+                                    </p>
+                                    <p className="text-xs">
+                                        친구가 이 행사에서 공연을 마킹하면 여기에 표시됩니다
+                                    </p>
+                                </div>
+                            ) : (
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium">닉네임</label>
-                                    <input
-                                        type="text"
-                                        value={nickname}
-                                        onChange={(e) => setNickname(e.target.value)}
-                                        placeholder="친구에게 보여질 이름"
-                                        className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                                    />
+                                    <p className="text-sm text-muted-foreground mb-3">
+                                        함께 보기에 추가할 친구를 선택하세요
+                                    </p>
+                                    {friendsWithTimetable.map((friend) => (
+                                        <button
+                                            key={friend.id}
+                                            onClick={() => handleToggleFriend(friend.id, friend.nickname)}
+                                            className={cn(
+                                                "w-full p-3 rounded-xl border flex items-center gap-3 transition-all",
+                                                friend.isAdded
+                                                    ? "border-primary bg-primary/5"
+                                                    : "hover:bg-muted/50"
+                                            )}
+                                        >
+                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-xl">
+                                                {friend.avatar}
+                                            </div>
+                                            <div className="flex-1 text-left">
+                                                <p className="font-medium">{friend.nickname}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {friend.slotCount}개 공연 마킹
+                                                </p>
+                                            </div>
+                                            {friend.isAdded ? (
+                                                <CheckCircle className="h-5 w-5 text-primary" />
+                                            ) : (
+                                                <Plus className="h-5 w-5 text-muted-foreground" />
+                                            )}
+                                        </button>
+                                    ))}
                                 </div>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => setShowShareModal(false)}
-                                        className="flex-1 py-2 border rounded-lg text-sm font-medium hover:bg-accent"
-                                    >
-                                        취소
-                                    </button>
-                                    <button
-                                        onClick={handleCreateShare}
-                                        disabled={!nickname.trim()}
-                                        className="flex-1 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50"
-                                    >
-                                        링크 생성
-                                    </button>
-                                </div>
-                            </>
-                        ) : (
-                            <>
-                                <div className="p-3 bg-muted rounded-lg">
-                                    <div className="flex items-center gap-2 text-sm break-all">
-                                        <Link className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                                        <span className="text-xs">{shareLink}</span>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={handleCopyLink}
-                                    className="w-full py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium flex items-center justify-center gap-2"
-                                >
-                                    {copied ? (
-                                        <>
-                                            <Check className="h-4 w-4" />
-                                            복사됨!
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Copy className="h-4 w-4" />
-                                            링크 복사
-                                        </>
-                                    )}
-                                </button>
-                                <p className="text-xs text-muted-foreground text-center">
-                                    친구에게 링크를 공유하면 함께 보기에서 일정을 비교할 수 있어요
-                                </p>
-                                <button
-                                    onClick={() => {
-                                        setShowShareModal(false);
-                                        setShareLink("");
-                                        setNickname("");
-                                    }}
-                                    className="w-full py-2 text-sm text-muted-foreground hover:text-foreground"
-                                >
-                                    닫기
-                                </button>
-                            </>
-                        )}
+                            )}
+                        </div>
+
+                        <div className="p-4 border-t bg-muted/30">
+                            <button
+                                onClick={() => setShowFriendModal(false)}
+                                className="w-full py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium"
+                            >
+                                완료
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
