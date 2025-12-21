@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Clock, Star, ChevronRight, Calendar, MapPin, Plus, List, AlertTriangle, X, LayoutGrid, ListIcon, Download } from "lucide-react";
+import { Clock, Star, ChevronRight, Calendar, MapPin, Plus, List, AlertTriangle, X, LayoutGrid, ListIcon, Download, Users, UserPlus, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Event, Slot } from "@/types/event";
 import { formatTime } from "@/lib/utils/date-format";
 import { useDevContext } from "@/lib/dev-context";
 import { useMyTimetable } from "@/lib/my-timetable-context";
+import { useFollow } from "@/lib/follow-context";
 import { MyTimetableView, CustomEventModal } from "@/components/timetable";
 import { SlotMarkType, SLOT_MARK_PRESETS } from "@/types/my-timetable";
 import { downloadICS, getExportSummary } from "@/lib/utils/ics-export";
@@ -36,6 +37,14 @@ function getStageColor(stage: string, index: number) {
     return colors[index % colors.length] || DEFAULT_STAGE_COLOR;
 }
 
+// 친구 정보 타입
+interface FriendWithSlot {
+    id: string;
+    nickname: string;
+    hasThisSlot: boolean; // 이 슬롯을 마킹했는지
+    isAdded: boolean; // 오버레이에 추가되었는지
+}
+
 // 슬롯 마킹 메뉴 컴포넌트
 function SlotMarkMenu({
     slotId,
@@ -44,6 +53,8 @@ function SlotMarkMenu({
     onSelect,
     onClear,
     onClose,
+    friendsWithSlot,
+    onToggleFriend,
 }: {
     slotId: string;
     slotTitle: string;
@@ -51,6 +62,8 @@ function SlotMarkMenu({
     onSelect: (type: SlotMarkType) => void;
     onClear: () => void;
     onClose: () => void;
+    friendsWithSlot: FriendWithSlot[];
+    onToggleFriend: (userId: string, nickname: string) => void;
 }) {
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -67,13 +80,16 @@ function SlotMarkMenu({
 
     const markTypes: SlotMarkType[] = ["watch", "meal", "rest", "move", "skip"];
 
+    // 이 슬롯을 마킹한 친구들
+    const friendsWithThisSlot = friendsWithSlot.filter(f => f.hasThisSlot);
+
     return (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/30">
             <div
                 ref={menuRef}
-                className="bg-white rounded-t-2xl sm:rounded-xl shadow-xl w-full sm:max-w-sm animate-slide-up"
+                className="bg-white rounded-t-2xl sm:rounded-xl shadow-xl w-full sm:max-w-sm animate-slide-up max-h-[85vh] overflow-y-auto"
             >
-                <div className="flex items-center justify-between p-4 border-b">
+                <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white z-10">
                     <h3 className="font-bold text-sm truncate flex-1 mr-2">{slotTitle}</h3>
                     <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full">
                         <X className="h-5 w-5 text-muted-foreground" />
@@ -90,7 +106,6 @@ function SlotMarkMenu({
                                     key={type}
                                     onClick={() => {
                                         onSelect(type);
-                                        onClose();
                                     }}
                                     className={cn(
                                         "flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all",
@@ -111,7 +126,6 @@ function SlotMarkMenu({
                         <button
                             onClick={() => {
                                 onClear();
-                                onClose();
                             }}
                             className="w-full mt-3 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-gray-100 rounded-lg transition-colors"
                         >
@@ -119,12 +133,64 @@ function SlotMarkMenu({
                         </button>
                     )}
                 </div>
-                <div className="p-3 pt-0">
+
+                {/* 같이할 친구 섹션 */}
+                {friendsWithThisSlot.length > 0 && (
+                    <div className="p-3 pt-0 border-t mt-2">
+                        <div className="flex items-center gap-2 mb-3 pt-3">
+                            <Users className="h-4 w-4 text-blue-600" />
+                            <span className="text-xs font-medium text-blue-700">
+                                같이할 친구 ({friendsWithThisSlot.filter(f => f.isAdded).length}/{friendsWithThisSlot.length})
+                            </span>
+                        </div>
+                        <div className="space-y-2">
+                            {friendsWithThisSlot.map((friend, idx) => (
+                                <button
+                                    key={friend.id}
+                                    onClick={() => onToggleFriend(friend.id, friend.nickname)}
+                                    className={cn(
+                                        "w-full flex items-center gap-3 p-2.5 rounded-xl border transition-all",
+                                        friend.isAdded
+                                            ? "border-blue-300 bg-blue-50"
+                                            : "border-gray-200 hover:bg-gray-50"
+                                    )}
+                                >
+                                    <div
+                                        className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
+                                        style={{
+                                            backgroundColor: ["#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"][idx % 5],
+                                        }}
+                                    >
+                                        {friend.nickname.charAt(0)}
+                                    </div>
+                                    <div className="flex-1 text-left">
+                                        <p className="font-medium text-sm">{friend.nickname}</p>
+                                        <p className="text-[10px] text-muted-foreground">
+                                            이 슬롯 함께 보기
+                                        </p>
+                                    </div>
+                                    <div className={cn(
+                                        "w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-colors",
+                                        friend.isAdded
+                                            ? "bg-blue-500"
+                                            : "bg-gray-200"
+                                    )}>
+                                        {friend.isAdded && (
+                                            <CheckCircle className="h-3.5 w-3.5 text-white" />
+                                        )}
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                <div className="p-3 pt-0 sticky bottom-0 bg-white">
                     <button
                         onClick={onClose}
-                        className="w-full py-2.5 text-sm font-medium text-muted-foreground hover:bg-gray-100 rounded-lg transition-colors"
+                        className="w-full py-2.5 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors"
                     >
-                        닫기
+                        완료
                     </button>
                 </div>
             </div>
@@ -135,7 +201,11 @@ function SlotMarkMenu({
 export function TimetableTab({ event, slots }: TimetableTabProps) {
     const { getNow } = useDevContext();
     const now = getNow();
-    const { getSlotMark, setSlotMark, clearSlotMark, getMarkedSlots, getConflicts, addCustomEvent, getCustomEvents } = useMyTimetable();
+    const {
+        getSlotMark, setSlotMark, clearSlotMark, getMarkedSlots, getConflicts, addCustomEvent, getCustomEvents,
+        getFriendTimetable, addFriendToOverlay, removeFriendFromOverlay, getOverlayFriends
+    } = useMyTimetable();
+    const { getFriends } = useFollow();
 
     const [selectedDay, setSelectedDay] = useState<number | "all">("all");
     const [selectedStage, setSelectedStage] = useState<string | "all">("all");
@@ -147,6 +217,9 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
     const [savedToast, setSavedToast] = useState(false);
     const [showExportConfirm, setShowExportConfirm] = useState(false);
     const [exportedToast, setExportedToast] = useState(false);
+    const [showFriendPanel, setShowFriendPanel] = useState(false);
+    // 뷰 옵션: "mine" = 내 것만, "overlay" = 친구 겹쳐보기, "intersection" = 교집합만
+    const [timetableViewOption, setTimetableViewOption] = useState<"mine" | "overlay" | "intersection">("mine");
 
     // 마킹된 슬롯 목록
     const markedSlots = getMarkedSlots(event.id);
@@ -165,6 +238,96 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
     // 충돌 감지
     const conflicts = getConflicts(event.id, slots);
     const hasConflicts = conflicts.length > 0;
+
+    // 오버레이에 추가된 친구 목록
+    const overlayFriendsList = useMemo(() => getOverlayFriends(event.id), [event.id, getOverlayFriends]);
+
+    // 타임테이블이 있는 친구 목록
+    const friendsWithTimetable = useMemo(() => {
+        const friends = getFriends();
+        return friends.filter(friend => {
+            const timetable = getFriendTimetable(friend.id, event.id);
+            return timetable && timetable.length > 0;
+        }).map(friend => ({
+            ...friend,
+            slotCount: getFriendTimetable(friend.id, event.id)?.length || 0,
+            isAdded: overlayFriendsList.some(f => f.userId === friend.id),
+        }));
+    }, [getFriends, getFriendTimetable, event.id, overlayFriendsList]);
+
+    // 친구 추가/제거 핸들러
+    const handleToggleFriend = (userId: string, nickname: string) => {
+        const isAdded = overlayFriendsList.some(f => f.userId === userId);
+        if (isAdded) {
+            removeFriendFromOverlay(userId, event.id);
+        } else {
+            addFriendToOverlay(userId, nickname, event.id);
+        }
+    };
+
+    // 현재 마킹 중인 슬롯에 대한 친구 정보 (이 슬롯을 마킹한 친구 찾기)
+    const friendsForMarkingSlot = useMemo((): FriendWithSlot[] => {
+        if (!markingSlot) return [];
+
+        const friends = getFriends();
+        return friends.map(friend => {
+            const friendTimetable = getFriendTimetable(friend.id, event.id);
+            const hasThisSlot = friendTimetable?.some(mark => mark.slotId === markingSlot.id) || false;
+            const isAdded = overlayFriendsList.some(f => f.userId === friend.id);
+
+            return {
+                id: friend.id,
+                nickname: friend.nickname,
+                hasThisSlot,
+                isAdded,
+            };
+        }).filter(f => f.hasThisSlot); // 이 슬롯을 마킹한 친구만
+    }, [markingSlot, getFriends, getFriendTimetable, event.id, overlayFriendsList]);
+
+    // 오버레이에 추가된 친구들의 슬롯 마킹 정보 (슬롯 ID -> 친구 목록)
+    const friendSlotMarks = useMemo(() => {
+        const slotToFriends: Record<string, { id: string; nickname: string; color: string }[]> = {};
+        const colors = ["#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"];
+
+        overlayFriendsList.forEach((friend, idx) => {
+            const timetable = getFriendTimetable(friend.userId, event.id);
+            if (timetable) {
+                timetable.forEach(mark => {
+                    if (!slotToFriends[mark.slotId]) {
+                        slotToFriends[mark.slotId] = [];
+                    }
+                    slotToFriends[mark.slotId].push({
+                        id: friend.userId,
+                        nickname: friend.nickname,
+                        color: colors[idx % colors.length],
+                    });
+                });
+            }
+        });
+
+        return slotToFriends;
+    }, [overlayFriendsList, getFriendTimetable, event.id]);
+
+    // 내 슬롯 ID Set
+    const mySlotIds = useMemo(() => {
+        return new Set(markedSlots.filter(m => m.type === "watch").map(m => m.slotId));
+    }, [markedSlots]);
+
+    // 교집합 슬롯 (나와 모든 오버레이 친구가 공통으로 마킹한 슬롯)
+    const intersectionSlotIds = useMemo(() => {
+        if (overlayFriendsList.length === 0) return new Set<string>();
+
+        // 내가 마킹한 슬롯 중에서
+        const myWatchSlots = markedSlots.filter(m => m.type === "watch").map(m => m.slotId);
+
+        // 모든 친구가 마킹한 슬롯만 필터
+        return new Set(myWatchSlots.filter(slotId => {
+            return overlayFriendsList.every(friend => {
+                const timetable = getFriendTimetable(friend.userId, event.id);
+                return timetable?.some(mark => mark.slotId === slotId);
+            });
+        }));
+    }, [markedSlots, overlayFriendsList, getFriendTimetable, event.id]);
 
     // Now/Next 계산
     const { currentSlot, nextSlot, progress, remainingMinutes } = useMemo(() => {
@@ -625,6 +788,14 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
                                                 const isCurrent = currentSlot?.id === slot.id;
                                                 const isPast = new Date(slot.endAt).getTime() < now.getTime();
 
+                                                // 오버레이/교집합 모드 관련
+                                                const friendsMarkedThis = friendSlotMarks[slot.id] || [];
+                                                const isMyMark = mySlotIds.has(slot.id);
+                                                const isIntersection = intersectionSlotIds.has(slot.id);
+                                                const showFriendOverlay = timetableViewOption === "overlay" && friendsMarkedThis.length > 0;
+                                                const showIntersectionHighlight = timetableViewOption === "intersection" && isIntersection;
+                                                const hideInIntersectionMode = timetableViewOption === "intersection" && !isIntersection && !isMyMark;
+
                                                 return (
                                                     <button
                                                         key={slot.id}
@@ -632,11 +803,16 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
                                                         className={cn(
                                                             "absolute left-0.5 right-0.5 rounded-sm border-l-4 p-1.5 text-left transition-all overflow-hidden shadow-sm",
                                                             "hover:shadow-md hover:z-10 active:scale-[0.98]",
+                                                            // 교집합 모드에서 교집합이 아닌 슬롯 흐리게
+                                                            hideInIntersectionMode && "opacity-20",
+                                                            // 교집합 하이라이트
+                                                            showIntersectionHighlight && "ring-2 ring-purple-500 ring-offset-1",
+                                                            // 기본 마킹 스타일
                                                             slotMark
                                                                 ? `${markPreset?.solidBg} ${markPreset?.borderColor} text-white`
                                                                 : `${stageColor.bg} ${stageColor.border.replace("border-", "border-l-")}`,
-                                                            isCurrent && "ring-2 ring-primary ring-offset-1",
-                                                            isPast && !isCurrent && "opacity-40"
+                                                            isCurrent && !showIntersectionHighlight && "ring-2 ring-primary ring-offset-1",
+                                                            isPast && !isCurrent && !hideInIntersectionMode && "opacity-40"
                                                         )}
                                                         style={{
                                                             top: `${top}%`,
@@ -661,6 +837,24 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
                                                                 )}>
                                                                     {formatTime(slot.startAt)}-{formatTime(slot.endAt)} ({duration}min)
                                                                 </span>
+                                                            )}
+                                                            {/* 친구 오버레이 표시 */}
+                                                            {showFriendOverlay && (
+                                                                <div className="flex items-center gap-0.5 mt-0.5">
+                                                                    {friendsMarkedThis.slice(0, 3).map((friend, fi) => (
+                                                                        <div
+                                                                            key={friend.id}
+                                                                            className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white border border-white shadow-sm"
+                                                                            style={{ backgroundColor: friend.color }}
+                                                                            title={friend.nickname}
+                                                                        >
+                                                                            {friend.nickname.charAt(0)}
+                                                                        </div>
+                                                                    ))}
+                                                                    {friendsMarkedThis.length > 3 && (
+                                                                        <span className="text-[8px] text-white/80">+{friendsMarkedThis.length - 3}</span>
+                                                                    )}
+                                                                </div>
                                                             )}
                                                         </div>
                                                     </button>
@@ -701,14 +895,26 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
                                         const stageIdx = availableStages.indexOf(slot.stage || "");
                                         const stageColor = getStageColor(slot.stage || "", stageIdx);
 
+                                        // 오버레이/교집합 모드 관련
+                                        const friendsMarkedThis = friendSlotMarks[slot.id] || [];
+                                        const isMyMark = mySlotIds.has(slot.id);
+                                        const isIntersection = intersectionSlotIds.has(slot.id);
+                                        const showFriendOverlay = timetableViewOption === "overlay" && friendsMarkedThis.length > 0;
+                                        const showIntersectionHighlight = timetableViewOption === "intersection" && isIntersection;
+                                        const hideInIntersectionMode = timetableViewOption === "intersection" && !isIntersection && !isMyMark;
+
                                         return (
                                             <button
                                                 key={slot.id}
                                                 onClick={() => setMarkingSlot(slot)}
                                                 className={cn(
                                                     "flex items-center gap-3 text-sm p-3 rounded-lg border w-full text-left transition-all active:scale-[0.98]",
-                                                    isCurrent && "bg-primary/5 border-primary/20",
-                                                    isPast && !isCurrent && "opacity-50",
+                                                    // 교집합 모드에서 교집합이 아닌 슬롯 흐리게
+                                                    hideInIntersectionMode && "opacity-20",
+                                                    // 교집합 하이라이트
+                                                    showIntersectionHighlight && "ring-2 ring-purple-500 ring-offset-1",
+                                                    isCurrent && !showIntersectionHighlight && "bg-primary/5 border-primary/20",
+                                                    isPast && !isCurrent && !hideInIntersectionMode && "opacity-50",
                                                     hasSlotConflict && "border-amber-300 bg-amber-50",
                                                     slotMark && !hasSlotConflict && `${markPreset?.bgColor} border`
                                                 )}
@@ -727,6 +933,24 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
                                                         <span className={cn("text-[10px] px-1.5 py-0.5 rounded", stageColor.bg, stageColor.text)}>
                                                             {slot.stage}
                                                         </span>
+                                                        {/* 친구 오버레이 표시 */}
+                                                        {showFriendOverlay && (
+                                                            <div className="flex items-center gap-0.5 ml-1">
+                                                                {friendsMarkedThis.slice(0, 3).map((friend) => (
+                                                                    <div
+                                                                        key={friend.id}
+                                                                        className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white border border-white shadow-sm"
+                                                                        style={{ backgroundColor: friend.color }}
+                                                                        title={friend.nickname}
+                                                                    >
+                                                                        {friend.nickname.charAt(0)}
+                                                                    </div>
+                                                                ))}
+                                                                {friendsMarkedThis.length > 3 && (
+                                                                    <span className="text-[10px] text-muted-foreground">+{friendsMarkedThis.length - 3}</span>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <div className={cn(
@@ -784,15 +1008,104 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
                             </p>
                         </div>
                     </div>
-                    {markedSlotCount > 0 && (
+                    <div className="flex items-center gap-2">
+                        {/* 친구 추가 버튼 */}
                         <button
-                            onClick={() => setShowSaveConfirm(true)}
-                            className="px-4 py-2 bg-yellow-500 text-white rounded-lg text-sm font-bold hover:bg-yellow-600 transition-colors shadow-sm"
+                            onClick={() => setShowFriendPanel(true)}
+                            className={cn(
+                                "flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                                overlayFriendsList.length > 0
+                                    ? "bg-blue-500 text-white hover:bg-blue-600"
+                                    : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                            )}
                         >
-                            저장하기
+                            <Users className="h-4 w-4" />
+                            {overlayFriendsList.length > 0 ? `${overlayFriendsList.length}명` : "친구"}
                         </button>
-                    )}
+                        {markedSlotCount > 0 && (
+                            <button
+                                onClick={() => setShowSaveConfirm(true)}
+                                className="px-4 py-2 bg-yellow-500 text-white rounded-lg text-sm font-bold hover:bg-yellow-600 transition-colors shadow-sm"
+                            >
+                                저장하기
+                            </button>
+                        )}
+                    </div>
                 </div>
+
+                {/* 뷰 옵션 (친구가 추가되어 있을 때만 표시) */}
+                {overlayFriendsList.length > 0 && (
+                    <div className="flex items-center gap-1 p-1 bg-white rounded-lg border border-gray-200 mb-3">
+                        <button
+                            onClick={() => setTimetableViewOption("mine")}
+                            className={cn(
+                                "flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors",
+                                timetableViewOption === "mine"
+                                    ? "bg-yellow-400 text-yellow-900"
+                                    : "text-muted-foreground hover:bg-gray-100"
+                            )}
+                        >
+                            <span className="flex items-center justify-center gap-1.5">
+                                <Star className="h-3.5 w-3.5" />
+                                내 것만
+                            </span>
+                        </button>
+                        <button
+                            onClick={() => setTimetableViewOption("overlay")}
+                            className={cn(
+                                "flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors",
+                                timetableViewOption === "overlay"
+                                    ? "bg-blue-500 text-white"
+                                    : "text-muted-foreground hover:bg-gray-100"
+                            )}
+                        >
+                            <span className="flex items-center justify-center gap-1.5">
+                                <Users className="h-3.5 w-3.5" />
+                                겹쳐보기
+                            </span>
+                        </button>
+                        <button
+                            onClick={() => setTimetableViewOption("intersection")}
+                            className={cn(
+                                "flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors",
+                                timetableViewOption === "intersection"
+                                    ? "bg-purple-500 text-white"
+                                    : "text-muted-foreground hover:bg-gray-100"
+                            )}
+                        >
+                            <span className="flex items-center justify-center gap-1.5">
+                                ∩
+                                교집합
+                            </span>
+                        </button>
+                    </div>
+                )}
+
+                {/* 뷰 옵션 설명 */}
+                {overlayFriendsList.length > 0 && timetableViewOption !== "mine" && (
+                    <div className={cn(
+                        "p-3 rounded-lg mb-3 text-xs",
+                        timetableViewOption === "overlay" && "bg-blue-50 border border-blue-200 text-blue-700",
+                        timetableViewOption === "intersection" && "bg-purple-50 border border-purple-200 text-purple-700"
+                    )}>
+                        {timetableViewOption === "overlay" && (
+                            <div className="flex items-center gap-2">
+                                <Users className="h-4 w-4" />
+                                <span>
+                                    위 타임테이블에서 친구({overlayFriendsList.map(f => f.nickname).join(", ")})의 마킹이 함께 표시됩니다
+                                </span>
+                            </div>
+                        )}
+                        {timetableViewOption === "intersection" && (
+                            <div className="flex items-center gap-2">
+                                <span className="text-lg">∩</span>
+                                <span>
+                                    나와 친구({overlayFriendsList.map(f => f.nickname).join(", ")})가 모두 마킹한 공통 슬롯: {intersectionSlotIds.size}개
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* 현재 선택 상태 */}
                 {markedSlotCount > 0 ? (
@@ -889,6 +1202,8 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
                     onSelect={(type) => handleMarkSlot(markingSlot.id, type)}
                     onClear={() => handleClearMark(markingSlot.id)}
                     onClose={() => setMarkingSlot(null)}
+                    friendsWithSlot={friendsForMarkingSlot}
+                    onToggleFriend={handleToggleFriend}
                 />
             )}
 
@@ -1051,6 +1366,126 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
                             <Download className="w-3 h-3 text-white" />
                         </div>
                         <span className="text-sm font-medium">캘린더 파일이 다운로드되었습니다!</span>
+                    </div>
+                </div>
+            )}
+
+            {/* 친구 추가 패널 (모달) */}
+            {showFriendPanel && (
+                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/30">
+                    <div className="bg-white rounded-t-2xl sm:rounded-xl shadow-xl w-full sm:max-w-sm max-h-[70vh] flex flex-col animate-slide-up">
+                        {/* 헤더 */}
+                        <div className="flex items-center justify-between p-4 border-b shrink-0">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                                    <Users className="h-4 w-4 text-blue-600" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-sm">친구 타임테이블</h3>
+                                    <p className="text-xs text-muted-foreground">
+                                        친구의 일정을 함께 볼 수 있어요
+                                    </p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowFriendPanel(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                                <X className="h-5 w-5 text-muted-foreground" />
+                            </button>
+                        </div>
+
+                        {/* 친구 목록 */}
+                        <div className="flex-1 overflow-y-auto p-4">
+                            {friendsWithTimetable.length === 0 ? (
+                                <div className="text-center py-8 text-muted-foreground">
+                                    <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                                    <p className="text-sm font-medium mb-1">타임테이블을 가진 친구가 없어요</p>
+                                    <p className="text-xs">
+                                        친구가 이 행사의 타임테이블을 만들면<br />여기에 표시됩니다
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {friendsWithTimetable.map((friend, idx) => (
+                                        <button
+                                            key={friend.id}
+                                            onClick={() => handleToggleFriend(friend.id, friend.nickname)}
+                                            className={cn(
+                                                "w-full flex items-center gap-3 p-3 rounded-xl border transition-all",
+                                                friend.isAdded
+                                                    ? "border-blue-300 bg-blue-50"
+                                                    : "border-gray-200 hover:bg-gray-50"
+                                            )}
+                                        >
+                                            {/* 아바타 */}
+                                            <div
+                                                className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold text-white shrink-0"
+                                                style={{
+                                                    backgroundColor: ["#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"][idx % 5],
+                                                }}
+                                            >
+                                                {friend.nickname.charAt(0)}
+                                            </div>
+                                            {/* 정보 */}
+                                            <div className="flex-1 text-left">
+                                                <p className="font-medium text-sm">{friend.nickname}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {friend.slotCount}개 슬롯
+                                                </p>
+                                            </div>
+                                            {/* 체크 표시 */}
+                                            <div className={cn(
+                                                "w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-colors",
+                                                friend.isAdded
+                                                    ? "bg-blue-500"
+                                                    : "bg-gray-200"
+                                            )}>
+                                                {friend.isAdded && (
+                                                    <CheckCircle className="h-4 w-4 text-white" />
+                                                )}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 선택된 친구 표시 */}
+                        {overlayFriendsList.length > 0 && (
+                            <div className="p-4 pt-0">
+                                <div className="p-3 bg-blue-50 rounded-lg">
+                                    <p className="text-xs text-blue-700 mb-2 font-medium">
+                                        선택된 친구 ({overlayFriendsList.length}명)
+                                    </p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {overlayFriendsList.map((friend, idx) => (
+                                            <span
+                                                key={friend.userId}
+                                                className="text-xs px-2 py-1 bg-white text-blue-700 rounded-full border border-blue-200 flex items-center gap-1"
+                                            >
+                                                <span
+                                                    className="w-3 h-3 rounded-full text-[8px] text-white flex items-center justify-center"
+                                                    style={{
+                                                        backgroundColor: ["#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"][idx % 5],
+                                                    }}
+                                                >
+                                                    {friend.nickname.charAt(0)}
+                                                </span>
+                                                {friend.nickname}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 푸터 */}
+                        <div className="p-4 border-t shrink-0">
+                            <button
+                                onClick={() => setShowFriendPanel(false)}
+                                className="w-full py-3 bg-blue-500 text-white rounded-xl text-sm font-bold hover:bg-blue-600 transition-colors"
+                            >
+                                완료
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
