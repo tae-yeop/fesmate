@@ -23,6 +23,7 @@ import {
     HelpCircle,
     UsersRound,
     Plus,
+    Ticket,
 } from "lucide-react";
 import { MOCK_EVENTS, MOCK_POSTS } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
@@ -38,10 +39,15 @@ import {
     getBadgesByCategory,
     BadgeCategory,
 } from "@/types/badge";
+import { useTicketBook } from "@/lib/ticketbook-context";
+import { TicketGrid, TicketViewer, TicketUploadModal, TicketEditorModal } from "@/components/ticketbook";
+import { Ticket as TicketType } from "@/types/ticketbook";
+import { useDevContext } from "@/lib/dev-context";
+import { LoginPromptModal } from "@/components/auth";
 
 type TimelineStatus = "upcoming" | "live" | "past";
 type FilterType = "all" | "wishlist" | "attended" | "review_pending";
-type SubTab = "schedule" | "crew" | "gonglog";
+type SubTab = "schedule" | "crew" | "gonglog" | "ticketbook";
 
 interface TimelineEvent extends Event {
     isWishlist: boolean;
@@ -75,6 +81,20 @@ export default function MyFesPage() {
 
     // CrewContext에서 크루 정보 가져오기
     const { myCrews, getCrewStats, getCrewActivities } = useCrew();
+
+    // TicketBookContext에서 티켓북 정보 가져오기
+    const { sortedTickets, addTicket, deleteTicket } = useTicketBook();
+
+    // 티켓북 상태
+    const [selectedTicket, setSelectedTicket] = useState<TicketType | null>(null);
+    const [viewerOpen, setViewerOpen] = useState(false);
+    const [uploadModalOpen, setUploadModalOpen] = useState(false);
+    const [editorOpen, setEditorOpen] = useState(false);
+    const [editingTicket, setEditingTicket] = useState<TicketType | null>(null);
+
+    // 로그인 상태 확인
+    const { isLoggedIn } = useDevContext();
+    const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
     const now = new Date();
 
@@ -360,6 +380,28 @@ export default function MyFesPage() {
                                 >
                                     <BarChart3 className="h-3 w-3" />
                                     공연로그
+                                </button>
+                                <button
+                                    onClick={() => setActiveSubTab("ticketbook")}
+                                    className={cn(
+                                        "px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1",
+                                        activeSubTab === "ticketbook"
+                                            ? "bg-background text-foreground shadow-sm"
+                                            : "text-muted-foreground hover:text-foreground"
+                                    )}
+                                >
+                                    <Ticket className="h-3 w-3" />
+                                    티켓북
+                                    {sortedTickets.length > 0 && (
+                                        <span className={cn(
+                                            "px-1.5 rounded-full text-[10px]",
+                                            activeSubTab === "ticketbook"
+                                                ? "bg-primary/20 text-primary"
+                                                : "bg-primary/10 text-primary"
+                                        )}>
+                                            {sortedTickets.length}
+                                        </span>
+                                    )}
                                 </button>
                             </div>
                         </div>
@@ -1076,6 +1118,126 @@ export default function MyFesPage() {
                     </div>
                 )}
             </div>
+            )}
+
+            {/* ===== 티켓북 탭 ===== */}
+            {activeSubTab === "ticketbook" && (
+            <div className="px-4 py-6">
+                {/* 비로그인 상태 */}
+                {!isLoggedIn ? (
+                    <div className="text-center py-16">
+                        <div className="h-20 w-20 rounded-full bg-purple-100 flex items-center justify-center mx-auto mb-4">
+                            <Ticket className="h-10 w-10 text-purple-500" />
+                        </div>
+                        <h2 className="text-lg font-bold mb-2">나의 티켓북</h2>
+                        <p className="text-muted-foreground mb-6">
+                            다녀온 공연의 티켓을 사진으로 보관하세요.<br />
+                            로그인하면 티켓북을 사용할 수 있어요.
+                        </p>
+                        <Link
+                            href="/login"
+                            className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-6 py-3 font-medium hover:opacity-90 transition-opacity"
+                        >
+                            로그인하기
+                        </Link>
+                    </div>
+                ) : (
+                    <>
+                        {/* 헤더 */}
+                        <div className="flex items-center justify-between mb-6">
+                            <div>
+                                <h2 className="text-lg font-bold flex items-center gap-2">
+                                    <Ticket className="h-5 w-5 text-purple-500" />
+                                    나의 티켓북
+                                </h2>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                    다녀온 공연의 티켓을 사진으로 보관하세요
+                                </p>
+                            </div>
+                            {sortedTickets.length > 0 && (
+                                <span className="text-sm text-muted-foreground">
+                                    총 {sortedTickets.length}장
+                                </span>
+                            )}
+                        </div>
+
+                        {/* 티켓 그리드 */}
+                        <TicketGrid
+                            tickets={sortedTickets}
+                            onTicketClick={(ticket) => {
+                                setSelectedTicket(ticket);
+                                setViewerOpen(true);
+                            }}
+                            onAddClick={() => setUploadModalOpen(true)}
+                        />
+
+                        {/* 빈 상태 안내 */}
+                        {sortedTickets.length === 0 && (
+                            <div className="mt-8 p-6 rounded-xl bg-purple-50 border border-purple-100">
+                                <h3 className="font-medium text-purple-900 mb-2">
+                                    티켓북 사용법
+                                </h3>
+                                <ol className="text-sm text-purple-700 space-y-2 list-decimal list-inside">
+                                    <li>다녀온 공연 티켓 사진을 촬영하거나 갤러리에서 선택</li>
+                                    <li>연결할 행사를 선택하고 좌석, 메모 등 추가 정보 입력</li>
+                                    <li>티켓을 탭하면 앞뒷면을 확인할 수 있어요</li>
+                                </ol>
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+            )}
+
+            {/* 티켓 뷰어 모달 */}
+            <TicketViewer
+                tickets={sortedTickets}
+                initialIndex={selectedTicket ? sortedTickets.findIndex(t => t.id === selectedTicket.id) : 0}
+                isOpen={viewerOpen}
+                onClose={() => {
+                    setViewerOpen(false);
+                    setSelectedTicket(null);
+                }}
+                onDelete={(ticketId) => {
+                    deleteTicket(ticketId);
+                    if (sortedTickets.length <= 1) {
+                        setViewerOpen(false);
+                        setSelectedTicket(null);
+                    }
+                }}
+                onEdit={(ticket) => {
+                    setEditingTicket(ticket);
+                    setViewerOpen(false);
+                    setEditorOpen(true);
+                }}
+            />
+
+            {/* 티켓 업로드 모달 */}
+            <TicketUploadModal
+                isOpen={uploadModalOpen}
+                onClose={() => setUploadModalOpen(false)}
+                onSubmit={(input) => {
+                    addTicket(input);
+                }}
+            />
+
+            {/* 티켓 에디터 모달 */}
+            {editingTicket && (
+                <TicketEditorModal
+                    isOpen={editorOpen}
+                    onClose={() => {
+                        setEditorOpen(false);
+                        setEditingTicket(null);
+                    }}
+                    imageUrl={editingTicket.frontImage.url}
+                    onComplete={(result) => {
+                        // 편집 완료 후 처리
+                        // TODO: 티켓 이미지 업데이트 로직 추가
+                        console.log("편집 완료:", result);
+                        setEditorOpen(false);
+                        setEditingTicket(null);
+                    }}
+                />
             )}
 
             {/* 배지란? 모달 */}

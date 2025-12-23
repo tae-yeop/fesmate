@@ -22,6 +22,7 @@ import { CompanionProvider } from "@/lib/companion-context";
 import { ParticipationProvider } from "@/lib/participation-context";
 import { NotificationProvider } from "@/lib/notification-context";
 import { CallGuideProvider } from "@/lib/call-guide-context";
+import { TicketBookProvider } from "@/lib/ticketbook-context";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -66,6 +67,7 @@ export default function RootLayout({
                       <ParticipationProvider>
                       <NotificationProvider>
                       <CallGuideProvider>
+                      <TicketBookProvider>
                       <DevStatusBar />
                       <div className="relative flex min-h-screen flex-col">
                         <Header />
@@ -74,6 +76,7 @@ export default function RootLayout({
                         <DevPanel />
                         <BadgeToast />
                       </div>
+                      </TicketBookProvider>
                       </CallGuideProvider>
                       </NotificationProvider>
                       </ParticipationProvider>
