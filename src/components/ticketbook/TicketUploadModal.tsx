@@ -92,25 +92,30 @@ export function TicketUploadModal({
 
   // 에디터 완료 (편집된 이미지로 교체)
   const handleEditorComplete = useCallback((resultDataUrl: string) => {
-    const editedImage: UploadedImage = {
-      id: `edited-${Date.now()}`,
-      url: resultDataUrl,
-      thumbnailUrl: resultDataUrl,
-      width: 800,
-      height: 1200,
-      fileName: "edited-ticket.png",
-      fileSize: resultDataUrl.length,
-      mimeType: "image/png",
-      uploadedAt: new Date(),
-      storageType: "local",
-    };
+    // 이미지에서 실제 dimension 추출
+    const img = new Image();
+    img.onload = () => {
+      const editedImage: UploadedImage = {
+        id: `edited-${Date.now()}`,
+        url: resultDataUrl,
+        thumbnailUrl: resultDataUrl,
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+        fileName: "edited-ticket.png",
+        fileSize: resultDataUrl.length,
+        mimeType: "image/png",
+        uploadedAt: new Date(),
+        storageType: "local",
+      };
 
-    if (editingImageType === "front") {
-      setFrontImages([editedImage]);
-    } else {
-      setBackImages([editedImage]);
-    }
-    setShowEditor(false);
+      if (editingImageType === "front") {
+        setFrontImages([editedImage]);
+      } else {
+        setBackImages([editedImage]);
+      }
+      setShowEditor(false);
+    };
+    img.src = resultDataUrl;
   }, [editingImageType]);
 
   // 현재 편집 중인 이미지 URL

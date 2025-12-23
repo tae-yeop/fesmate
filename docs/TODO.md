@@ -449,11 +449,30 @@
 
 ---
 
-## 🎫 나의 티켓북 (PRD 6.16) [P2]
-- [ ] 티켓 사진 등록 UI
+## 🎫 나의 티켓북 (PRD 6.16) [P2] — 🚧 진행 중
+
+### ✅ 완료
+- [x] 티켓 타입 정의 (`src/types/ticketbook.ts`)
+- [x] TicketBookContext 생성 (localStorage 저장)
+- [x] 티켓 사진 등록 UI (`TicketUploadModal`)
+- [x] 티켓 컬렉션 뷰 (`TicketGrid`)
+- [x] 전체화면 뷰어 (`TicketViewer` - 플립, 스와이프)
+- [x] 호모그래피 에디터 (`TicketEditorModal` - 4점 태깅, 원근 변환)
+- [x] 템플릿 시스템 (5개 기본 템플릿)
+- [x] 뷰 선택 시스템 (`TicketViewToggle` - 가로/세로)
+- [x] MyFes 페이지 티켓북 탭 통합
+
+### 🐛 알려진 이슈
+- [x] **편집 이미지 dimension 하드코딩 수정** (2024-12-24)
+  - 이전: `TicketUploadModal`에서 편집된 이미지 dimension이 `800x1200`으로 하드코딩됨
+  - 수정: `img.naturalWidth/Height`를 사용하여 실제 dimension 동적 추출
+  - 참고: 기존 localStorage 데이터는 잘못된 dimension을 가지고 있을 수 있음 (티켓 재등록 필요)
+  - 디버깅용 배지 유지 (이미지 크기/방향/회전 여부 표시)
+
+### 📋 미구현
 - [ ] AI 마스킹 (개인정보 자동 가림)
-- [ ] 티켓 컬렉션 뷰
 - [ ] SNS/카카오 공유
+- [ ] Supabase 저장 연동
 
 ### 📈 연말 결산 리포트 (PRD 6.16) [P2]
 - [ ] "20XX 나의 공연 리포트" 자동 생성
