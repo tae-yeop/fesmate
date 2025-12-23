@@ -37,18 +37,28 @@ const MOCK_USER_EVENTS: Record<string, { wishlist: string[]; attended: string[] 
 };
 
 export function WishlistProvider({ children }: { children: ReactNode }) {
-    const { mockUserId } = useDevContext();
-    const currentUserId = mockUserId || "user1";
+    const { mockUserId, isLoggedIn } = useDevContext();
+    // 비로그인 시에는 userId가 null (찜/다녀옴 데이터 비활성화)
+    const currentUserId = isLoggedIn ? (mockUserId || "user1") : null;
 
     const [wishlist, setWishlist] = useState<Set<string>>(new Set());
     const [attended, setAttended] = useState<Set<string>>(new Set());
     const [isLoaded, setIsLoaded] = useState(false);
-    const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
+    const [loadedUserId, setLoadedUserId] = useState<string | null | undefined>(undefined);
 
     // 사용자 변경 또는 초기 로드 시 localStorage에서 로드
     useEffect(() => {
         // 사용자가 변경되었거나 처음 로드하는 경우
         if (loadedUserId !== currentUserId) {
+            // 비로그인 시에는 빈 데이터
+            if (!currentUserId) {
+                setWishlist(new Set());
+                setAttended(new Set());
+                setLoadedUserId(currentUserId);
+                setIsLoaded(true);
+                return;
+            }
+
             try {
                 const wishlistKey = getWishlistStorageKey(currentUserId);
                 const attendedKey = getAttendedStorageKey(currentUserId);
@@ -87,9 +97,9 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
         }
     }, [currentUserId, loadedUserId]);
 
-    // localStorage에 저장 (현재 사용자의 데이터만)
+    // localStorage에 저장 (현재 사용자의 데이터만, 로그인 시에만)
     useEffect(() => {
-        if (!isLoaded || loadedUserId !== currentUserId) return;
+        if (!isLoaded || loadedUserId !== currentUserId || !currentUserId) return;
         try {
             const wishlistKey = getWishlistStorageKey(currentUserId);
             localStorage.setItem(wishlistKey, JSON.stringify([...wishlist]));
@@ -99,7 +109,7 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
     }, [wishlist, isLoaded, currentUserId, loadedUserId]);
 
     useEffect(() => {
-        if (!isLoaded || loadedUserId !== currentUserId) return;
+        if (!isLoaded || loadedUserId !== currentUserId || !currentUserId) return;
         try {
             const attendedKey = getAttendedStorageKey(currentUserId);
             localStorage.setItem(attendedKey, JSON.stringify([...attended]));

@@ -19,6 +19,7 @@ import { useDevContext } from "@/lib/dev-context";
 import { useRouter } from "next/navigation";
 import { JoinModal } from "@/components/community/JoinModal";
 import { useJoin } from "@/lib/join-context";
+import { LoginPromptModal } from "@/components/auth";
 
 interface PostDetailModalProps {
     post: Post;
@@ -40,6 +41,8 @@ export function PostDetailModal({ post, isOpen, onClose }: PostDetailModalProps)
     const [commentText, setCommentText] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
+    const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+    const [loginPromptAction, setLoginPromptAction] = useState("");
 
     const commentInputRef = useRef<HTMLInputElement>(null);
     const commentsEndRef = useRef<HTMLDivElement>(null);
@@ -103,7 +106,8 @@ export function PostDetailModal({ post, isOpen, onClose }: PostDetailModalProps)
     // 댓글 입력창 열기
     const handleOpenCommentInput = () => {
         if (!isLoggedIn) {
-            alert("댓글을 작성하려면 로그인이 필요합니다.");
+            setLoginPromptAction("댓글 작성");
+            setShowLoginPrompt(true);
             return;
         }
         setShowCommentInput(true);
@@ -431,7 +435,14 @@ export function PostDetailModal({ post, isOpen, onClose }: PostDetailModalProps)
                             {/* 도움됨 & 댓글 버튼 */}
                             <div className="flex items-center justify-between">
                                 <button
-                                    onClick={() => toggleHelpful(post.id)}
+                                    onClick={() => {
+                                        if (!isLoggedIn) {
+                                            setLoginPromptAction("도움됨 표시");
+                                            setShowLoginPrompt(true);
+                                            return;
+                                        }
+                                        toggleHelpful(post.id);
+                                    }}
                                     className={cn(
                                         "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors",
                                         helpful
@@ -478,6 +489,13 @@ export function PostDetailModal({ post, isOpen, onClose }: PostDetailModalProps)
                     }}
                 />
             )}
+
+            {/* Login Prompt Modal */}
+            <LoginPromptModal
+                isOpen={showLoginPrompt}
+                onClose={() => setShowLoginPrompt(false)}
+                action={loginPromptAction}
+            />
         </div>
     );
 }

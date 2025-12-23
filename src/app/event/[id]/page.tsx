@@ -21,6 +21,8 @@ import { formatDateTime } from "@/lib/utils/date-format";
 import { OverviewTab, HubTab, TimetableTab, ArtistsTab } from "./components";
 import { useWishlist } from "@/lib/wishlist-context";
 import { useDevContext } from "@/lib/dev-context";
+import { useAuth } from "@/lib/auth-context";
+import { LoginPromptModal } from "@/components/auth";
 
 interface PageProps {
     params: Promise<{ id: string }>;
@@ -57,6 +59,11 @@ export default function EventDetailPage({ params }: PageProps) {
     }, [router]);
     const [isComposerOpen, setIsComposerOpen] = useState(false);
     const [shareStatus, setShareStatus] = useState<"idle" | "copied">("idle");
+    const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+    const [pendingAction, setPendingAction] = useState<string>("");
+
+    // 인증 상태
+    const { user } = useAuth();
 
     // URL 변경 시 탭 업데이트 (알림 딥링크 등에서 접근 시)
     useEffect(() => {
@@ -74,6 +81,7 @@ export default function EventDetailPage({ params }: PageProps) {
         getNow,
         overrideMode,
         isDevMode,
+        isLoggedIn: isDevLoggedIn,
         scenarioEventId,
         scenarioPosts,
         scenarioSlots,
@@ -94,6 +102,19 @@ export default function EventDetailPage({ params }: PageProps) {
         }
         return getSlotsByEventId(id);
     }, [id, isDevMode, scenarioEventId, scenarioSlots]);
+
+    // 실제 로그인 또는 Dev 모드 로그인 상태 확인
+    const isLoggedIn = !!user || isDevLoggedIn;
+
+    // 로그인 필요한 액션 처리
+    const requireAuth = useCallback((action: string, callback: () => void) => {
+        if (isLoggedIn) {
+            callback();
+        } else {
+            setPendingAction(action);
+            setShowLoginPrompt(true);
+        }
+    }, [isLoggedIn]);
 
     // 공유 기능
     const handleShare = useCallback(async () => {
@@ -224,7 +245,7 @@ export default function EventDetailPage({ params }: PageProps) {
                     {/* Action Buttons - ⭐찜 / ✅다녀옴 */}
                     <div className="flex w-full gap-3">
                         <button
-                            onClick={() => toggleWishlist(id)}
+                            onClick={() => requireAuth("찜하기", () => toggleWishlist(id))}
                             className={cn(
                                 "flex-1 flex items-center justify-center gap-2 rounded-full border py-2.5 text-sm font-medium transition-colors",
                                 isWishlist(id)
@@ -236,7 +257,7 @@ export default function EventDetailPage({ params }: PageProps) {
                             <span>찜 {event.stats?.wishlistCount?.toLocaleString()}</span>
                         </button>
                         <button
-                            onClick={() => toggleAttended(id)}
+                            onClick={() => requireAuth("다녀옴 기록", () => toggleAttended(id))}
                             className={cn(
                                 "flex-1 flex items-center justify-center gap-2 rounded-full border py-2.5 text-sm font-medium transition-colors",
                                 isAttended(id)
@@ -308,6 +329,13 @@ export default function EventDetailPage({ params }: PageProps) {
                 onClose={() => setIsComposerOpen(false)}
                 eventId={event.id}
                 eventTitle={event.title}
+            />
+
+            {/* Login Prompt Modal */}
+            <LoginPromptModal
+                isOpen={showLoginPrompt}
+                onClose={() => setShowLoginPrompt(false)}
+                action={pendingAction}
             />
         </div>
     );
