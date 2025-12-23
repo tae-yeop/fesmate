@@ -1,4 +1,4 @@
-import { Event, Slot } from "@/types/event";
+import { Event, Slot, OperationalSlot, Stage } from "@/types/event";
 import { Post } from "@/types/post";
 import { Notification } from "@/types/notification";
 
@@ -51,6 +51,64 @@ export const MOCK_EVENTS: Event[] = [
         ticketLinks: [
             { name: "인터파크 티켓", url: "https://tickets.interpark.com/goods/24016943" },
             { name: "YES24 티켓", url: "https://ticket.yes24.com/Perf/55948" },
+        ],
+        timetableType: "linear",
+        operationalSlots: [
+            {
+                id: "os1",
+                eventId: "55948",
+                type: "md_sale",
+                startAt: new Date(addDays(now, 30).setHours(15, 0, 0, 0)),
+                endAt: new Date(addDays(now, 30).setHours(18, 0, 0, 0)),
+                location: "1층 로비",
+                description: "공식 MD 현장 판매. 일부 품목 한정수량.",
+            },
+            {
+                id: "os2",
+                eventId: "55948",
+                type: "ticket_pickup",
+                startAt: new Date(addDays(now, 30).setHours(16, 0, 0, 0)),
+                endAt: new Date(addDays(now, 30).setHours(18, 30, 0, 0)),
+                location: "1층 매표소",
+                description: "현장수령 예매자 티켓 수령",
+            },
+            {
+                id: "os3",
+                eventId: "55948",
+                type: "standing_entry",
+                startAt: new Date(addDays(now, 30).setHours(18, 0, 0, 0)),
+                location: "2층 입구",
+                description: "스탠딩 순번대로 입장",
+            },
+            {
+                id: "os4",
+                eventId: "55948",
+                type: "seated_entry",
+                startAt: new Date(addDays(now, 30).setHours(18, 30, 0, 0)),
+                location: "1층 정문",
+                description: "지정석 입장",
+            },
+            {
+                id: "os5",
+                eventId: "55948",
+                type: "show_start",
+                startAt: new Date(addDays(now, 30).setHours(19, 0, 0, 0)),
+                isHighlight: true,
+            },
+            {
+                id: "os6",
+                eventId: "55948",
+                type: "encore",
+                startAt: new Date(addDays(now, 30).setHours(20, 30, 0, 0)),
+                description: "앵콜 예상 시간",
+            },
+            {
+                id: "os7",
+                eventId: "55948",
+                type: "show_end",
+                startAt: new Date(addDays(now, 30).setHours(21, 0, 0, 0)),
+                description: "공연 종료 예상",
+            },
         ],
         stats: {
             reportCount: 0,
@@ -165,6 +223,11 @@ export const MOCK_EVENTS: Event[] = [
         ticketLinks: [
             { name: "멜론티켓", url: "https://ticket.melon.com/performance/detail.htm?prodId=209123" },
             { name: "티켓링크", url: "https://www.ticketlink.co.kr/product/45678" },
+        ],
+        timetableType: "grid",
+        stages: [
+            { id: "main", name: "Main Stage", order: 1, color: "#EF4444" },
+            { id: "second", name: "Second Stage", order: 2, color: "#F59E0B" },
         ],
         stats: {
             reportCount: 42,
@@ -494,6 +557,12 @@ export const MOCK_EVENTS: Event[] = [
         ticketLinks: [
             { name: "인터파크 티켓", url: "https://tickets.interpark.com/pentaport" },
             { name: "멜론티켓", url: "https://ticket.melon.com/pentaport" },
+        ],
+        timetableType: "grid",
+        stages: [
+            { id: "main", name: "Main Stage", order: 1, color: "#EF4444" },
+            { id: "second", name: "Second Stage", order: 2, color: "#F59E0B" },
+            { id: "third", name: "Third Stage", order: 3, color: "#3B82F6" },
         ],
         stats: {
             reportCount: 28,

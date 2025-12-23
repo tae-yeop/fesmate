@@ -303,9 +303,12 @@ export function BadgeProvider({ children }: { children: ReactNode }) {
         return { current: Math.min(current, conditionValue), max: conditionValue };
     }, [stats]);
 
-    // 배지 획득 체크 및 업데이트
+    // 로그인 상태 확인
+    const isLoggedIn = mockUserId !== null;
+
+    // 배지 획득 체크 및 업데이트 (로그인 상태에서만)
     useEffect(() => {
-        if (!isInitialized) return;
+        if (!isInitialized || !isLoggedIn) return;
 
         const currentBadgeIds = new Set(earnedBadges.map(b => b.badgeId));
         const newlyEarned: BadgeDefinition[] = [];
@@ -334,7 +337,7 @@ export function BadgeProvider({ children }: { children: ReactNode }) {
             setEarnedBadges(prev => [...prev, ...newEarnedBadges]);
             setNewBadges(newlyEarned);
         }
-    }, [stats, isInitialized, earnedBadges, checkBadgeCondition, attendedEvents]);
+    }, [stats, isInitialized, isLoggedIn, earnedBadges, checkBadgeCondition, attendedEvents]);
 
     const hasBadge = useCallback((badgeId: string): boolean => {
         return earnedBadges.some(b => b.badgeId === badgeId);

@@ -15,9 +15,12 @@ import {
     getCheckedSlotIdsFromMarks,
 } from "@/types/my-timetable";
 import { Slot } from "@/types/event";
+import { useDevContext } from "./dev-context";
 
-const STORAGE_KEY = "fesmate_my_timetables_v2";
-const SHARED_STORAGE_KEY = "fesmate_shared_timetables_v2";
+// 사용자별 storage key 생성
+const getStorageKey = (userId: string) => `fesmate_my_timetables_${userId}`;
+const getSharedStorageKey = (userId: string) => `fesmate_shared_timetables_${userId}`;
+const getOverlayStorageKey = (userId: string) => `fesmate_overlay_friends_${userId}`;
 
 // Mock: 친구들의 타임테이블 (실제로는 서버에서 가져와야 함)
 // 각 사용자별, 행사별 슬롯 마킹 데이터
@@ -122,20 +125,34 @@ const OVERLAY_COLORS = [
     "#EC4899", // pink
 ];
 
-// 오버레이에 추가된 친구 목록 저장 키
-const OVERLAY_FRIENDS_KEY = "fesmate_overlay_friends";
-
 export function MyTimetableProvider({ children }: { children: ReactNode }) {
+    const { mockUserId, isLoggedIn } = useDevContext();
+    const currentUserId = mockUserId || "guest";
+
     const [timetables, setTimetables] = useState<Record<string, MyTimetable>>({});
     const [sharedTimetables, setSharedTimetables] = useState<SharedTimetable[]>([]);
     // 행사별 오버레이에 추가된 친구 목록: { [eventId]: [{ userId, nickname }] }
     const [overlayFriends, setOverlayFriends] = useState<Record<string, { userId: string; nickname: string }[]>>({});
     const [isLoaded, setIsLoaded] = useState(false);
+    const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
 
-    // localStorage에서 로드
+    // 사용자 변경 또는 초기 로드 시 localStorage에서 로드
     useEffect(() => {
+        // 로그아웃 상태면 빈 데이터 사용
+        if (!isLoggedIn) {
+            setTimetables({});
+            setSharedTimetables([]);
+            setOverlayFriends({});
+            setIsLoaded(true);
+            setLoadedUserId(null);
+            return;
+        }
+
+        // 같은 사용자면 다시 로드하지 않음
+        if (loadedUserId === currentUserId) return;
+
         try {
-            const stored = localStorage.getItem(STORAGE_KEY);
+            const stored = localStorage.getItem(getStorageKey(currentUserId));
             if (stored) {
                 const parsed = JSON.parse(stored);
                 // Date 변환
@@ -159,9 +176,11 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
                     }
                 });
                 setTimetables(parsed);
+            } else {
+                setTimetables({});
             }
 
-            const sharedStored = localStorage.getItem(SHARED_STORAGE_KEY);
+            const sharedStored = localStorage.getItem(getSharedStorageKey(currentUserId));
             if (sharedStored) {
                 const parsedShared = JSON.parse(sharedStored);
                 setSharedTimetables(parsedShared.map((s: SharedTimetable) => ({
@@ -174,37 +193,45 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
                         createdAt: new Date(e.createdAt),
                     })),
                 })));
+            } else {
+                setSharedTimetables([]);
             }
 
             // overlayFriends 로드
-            const overlayStored = localStorage.getItem(OVERLAY_FRIENDS_KEY);
+            const overlayStored = localStorage.getItem(getOverlayStorageKey(currentUserId));
             if (overlayStored) {
                 setOverlayFriends(JSON.parse(overlayStored));
+            } else {
+                setOverlayFriends({});
             }
         } catch (e) {
             console.error("Failed to load timetables:", e);
+            setTimetables({});
+            setSharedTimetables([]);
+            setOverlayFriends({});
         }
+        setLoadedUserId(currentUserId);
         setIsLoaded(true);
-    }, []);
+    }, [currentUserId, isLoggedIn, loadedUserId]);
 
-    // localStorage에 저장
+    // localStorage에 저장 (로그인 상태에서만)
     useEffect(() => {
-        if (isLoaded) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(timetables));
+        if (isLoaded && isLoggedIn && loadedUserId === currentUserId) {
+            localStorage.setItem(getStorageKey(currentUserId), JSON.stringify(timetables));
         }
-    }, [timetables, isLoaded]);
-
-    useEffect(() => {
-        if (isLoaded) {
-            localStorage.setItem(SHARED_STORAGE_KEY, JSON.stringify(sharedTimetables));
-        }
-    }, [sharedTimetables, isLoaded]);
+    }, [timetables, isLoaded, isLoggedIn, currentUserId, loadedUserId]);
 
     useEffect(() => {
-        if (isLoaded) {
-            localStorage.setItem(OVERLAY_FRIENDS_KEY, JSON.stringify(overlayFriends));
+        if (isLoaded && isLoggedIn && loadedUserId === currentUserId) {
+            localStorage.setItem(getSharedStorageKey(currentUserId), JSON.stringify(sharedTimetables));
         }
-    }, [overlayFriends, isLoaded]);
+    }, [sharedTimetables, isLoaded, isLoggedIn, currentUserId, loadedUserId]);
+
+    useEffect(() => {
+        if (isLoaded && isLoggedIn && loadedUserId === currentUserId) {
+            localStorage.setItem(getOverlayStorageKey(currentUserId), JSON.stringify(overlayFriends));
+        }
+    }, [overlayFriends, isLoaded, isLoggedIn, currentUserId, loadedUserId]);
 
     // 타임테이블 가져오기 (없으면 생성)
     const getOrCreateTimetable = useCallback((eventId: string): MyTimetable => {
