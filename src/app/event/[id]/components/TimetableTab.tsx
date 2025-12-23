@@ -4,12 +4,12 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { Clock, Star, ChevronRight, Calendar, MapPin, Plus, List, AlertTriangle, X, LayoutGrid, ListIcon, Download, Users, UserPlus, CheckCircle, NotebookPen } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { Event, Slot } from "@/types/event";
+import { Event, Slot, getTimetableViewType } from "@/types/event";
 import { formatTime } from "@/lib/utils/date-format";
 import { useDevContext } from "@/lib/dev-context";
 import { useMyTimetable } from "@/lib/my-timetable-context";
 import { useFollow } from "@/lib/follow-context";
-import { MyTimetableView, CustomEventModal } from "@/components/timetable";
+import { MyTimetableView, CustomEventModal, LinearTimeline } from "@/components/timetable";
 import { SlotMarkType, SLOT_MARK_PRESETS } from "@/types/my-timetable";
 import { downloadICS, getExportSummary } from "@/lib/utils/ics-export";
 import { findCallGuideArtistByName } from "@/lib/mock-call-guide";
@@ -232,6 +232,9 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
         getFriendTimetable, addFriendToOverlay, removeFriendFromOverlay, getOverlayFriends
     } = useMyTimetable();
     const { getFriends } = useFollow();
+
+    // 타임테이블 뷰 타입 결정 (linear: 단독 공연, grid: 페스티벌)
+    const timetableViewType = getTimetableViewType(event);
 
     const [selectedDay, setSelectedDay] = useState<number | "all">("all");
     const [selectedStage, setSelectedStage] = useState<string | "all">("all");
@@ -572,6 +575,19 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
         setExportedToast(true);
         setTimeout(() => setExportedToast(false), 2000);
     };
+
+    // 단독 공연용 선형 타임라인 (operationalSlots가 있는 경우)
+    if (timetableViewType === "linear" && event.operationalSlots && event.operationalSlots.length > 0) {
+        return (
+            <div className="space-y-6">
+                <LinearTimeline
+                    event={event}
+                    operationalSlots={event.operationalSlots}
+                    now={now}
+                />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">

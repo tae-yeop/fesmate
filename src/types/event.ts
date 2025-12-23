@@ -13,6 +13,63 @@ export type HubMode = "AUTO" | "LIVE" | "RECAP";
 /** 행사 유형 */
 export type EventType = "concert" | "festival" | "musical" | "exhibition";
 
+/** 타임테이블 뷰 타입 */
+export type TimetableViewType = "linear" | "grid";
+
+/** 스테이지 정보 (페스티벌용) */
+export interface Stage {
+    id: string;
+    name: string;
+    order: number;  // 표시 순서
+    color?: string; // 스테이지 구분 색상
+}
+
+/** 운영 슬롯 타입 (단독 공연용) */
+export type OperationalSlotType =
+    | "md_sale"        // MD 현장 판매
+    | "ticket_pickup"  // 티켓 현장 수령
+    | "locker_open"    // 물품 보관소
+    | "queue_start"    // 대기열 시작
+    | "standing_entry" // 스탠딩 입장
+    | "seated_entry"   // 지정석 입장
+    | "show_start"     // 공연 시작
+    | "show_end"       // 공연 종료
+    | "intermission"   // 인터미션
+    | "shuttle"        // 셔틀버스
+    | "photo_time"     // 포토타임
+    | "encore"         // 앵콜
+    | "custom";        // 기타
+
+/** 운영 슬롯 타입 라벨 */
+export const OPERATIONAL_SLOT_LABELS: Record<OperationalSlotType, { label: string; icon: string }> = {
+    md_sale: { label: "MD 판매", icon: "🛍️" },
+    ticket_pickup: { label: "티켓 수령", icon: "🎫" },
+    locker_open: { label: "물품 보관", icon: "🧳" },
+    queue_start: { label: "대기열 시작", icon: "🚶" },
+    standing_entry: { label: "스탠딩 입장", icon: "🚪" },
+    seated_entry: { label: "지정석 입장", icon: "🪑" },
+    show_start: { label: "공연 시작", icon: "🎵" },
+    show_end: { label: "공연 종료", icon: "🔚" },
+    intermission: { label: "인터미션", icon: "☕" },
+    shuttle: { label: "셔틀버스", icon: "🚌" },
+    photo_time: { label: "포토타임", icon: "📸" },
+    encore: { label: "앵콜", icon: "🎤" },
+    custom: { label: "기타", icon: "📋" },
+};
+
+/** 운영 슬롯 (단독 공연용 타임라인 아이템) */
+export interface OperationalSlot {
+    id: string;
+    eventId: string;
+    type: OperationalSlotType;
+    title?: string;         // 커스텀 제목 (type이 custom일 때)
+    startAt: Date;
+    endAt?: Date;           // 종료 시간 (선택)
+    location?: string;      // 위치 (예: "1층 로비", "A게이트")
+    description?: string;   // 상세 설명
+    isHighlight?: boolean;  // 중요 표시 (공연 시작 등)
+}
+
 /** 공연장/장소 */
 export interface Venue {
     id: string;
@@ -102,9 +159,14 @@ export interface Event {
     // 예매 링크
     ticketLinks?: TicketLink[];
 
+    // 타임테이블 설정
+    timetableType?: TimetableViewType; // "linear" (단독공연) | "grid" (페스티벌), 기본값은 type에 따라 자동
+    stages?: Stage[];                   // 페스티벌 스테이지 목록
+
     // 관계
     artists?: Artist[];
-    slots?: Slot[];
+    slots?: Slot[];                     // 페스티벌용 아티스트 슬롯
+    operationalSlots?: OperationalSlot[]; // 단독 공연용 운영 일정
 
     // 통계
     stats?: EventStats;
@@ -158,4 +220,33 @@ export function getDDayBadge(startAt: Date, now: Date = new Date()): string | nu
     if (diffDays <= 7) return `D-${diffDays}`;
 
     return null;
+}
+
+/**
+ * 타임테이블 뷰 타입 결정
+ * - 명시적으로 지정된 경우 해당 값 사용
+ * - 페스티벌/뮤지컬 → grid
+ * - 콘서트/전시 → linear
+ */
+export function getTimetableViewType(event: Event): TimetableViewType {
+    // 명시적 설정이 있으면 사용
+    if (event.timetableType) {
+        return event.timetableType;
+    }
+
+    // 스테이지가 2개 이상이면 grid
+    if (event.stages && event.stages.length >= 2) {
+        return "grid";
+    }
+
+    // 행사 유형에 따라 기본값 결정
+    switch (event.type) {
+        case "festival":
+            return "grid";
+        case "concert":
+        case "musical":
+        case "exhibition":
+        default:
+            return "linear";
+    }
 }
