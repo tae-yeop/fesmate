@@ -25,8 +25,21 @@
 | Language | TypeScript 5 |
 | UI | React 19, Tailwind CSS 4 |
 | Icons | Lucide React |
-| Backend | Supabase (PostgreSQL + Auth) |
+| Backend | Supabase (PostgreSQL + Auth + Storage + Realtime) |
 | Utilities | clsx, tailwind-merge |
+
+## 데이터 저장 현황
+
+| 데이터 | 현재 저장소 | 미래 저장소 |
+|--------|------------|------------|
+| 행사/아티스트/장소 | `mock-data.ts` | Supabase DB |
+| 인증 | Supabase Auth | Supabase Auth |
+| 찜/다녀옴/도움됨 | localStorage | Supabase DB |
+| 크루/팔로우/차단 | localStorage | Supabase DB |
+| 글/댓글/알림 | localStorage | Supabase DB |
+
+**DB 스키마 설계 완료**: `supabase/migrations/` 폴더에 SQL 파일 있음
+**마이그레이션 계획**: `docs/tech/supabase-migration-plan.md` 참조
 
 ## 프로젝트 구조
 
@@ -63,7 +76,17 @@ src/
     ├── event.ts            # Event, Artist, Venue, Slot
     ├── post.ts             # Post
     ├── crew.ts             # Crew, CrewMember, CrewAnnouncement
+    ├── database.ts         # Supabase DB 타입 (Tables, TablesInsert, TablesUpdate)
     └── ...                 # notification, report, comment, follow 등
+
+supabase/
+└── migrations/             # PostgreSQL 마이그레이션 파일 (6개)
+    ├── 00001_core_tables.sql      # venues, artists, events, stages, slots
+    ├── 00002_user_tables.sql      # users, user_events, follows, blocks
+    ├── 00003_content_tables.sql   # posts, comments, notifications, reports
+    ├── 00004_social_tables.sql    # crews, crew_members, participation
+    ├── 00005_guide_tables.sql     # songs, call_guides, call_guide_entries
+    └── 00006_rls_policies.sql     # Row Level Security 정책
 ```
 
 ## 핵심 개념 (PRD v0.5 기준)
@@ -256,6 +279,8 @@ npm run dev
 - [UX/IA v0.5](/docs/UX_IA_fesmate_v0.5.md) - 정보구조 및 화면 구성
 - [기획 요약 v0.5](/docs/fes_app_planning_summary_v0.5.md) - 전체 기획 정리
 - [TODO](/docs/TODO.md) - 개발 태스크 목록
+- [DB 스키마](/docs/tech/database-schema.md) - Supabase DB 설계
+- [마이그레이션 계획](/docs/tech/supabase-migration-plan.md) - Mock → Supabase 전환
 
 ## MVP 우선순위
 

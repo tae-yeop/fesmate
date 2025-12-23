@@ -1,6 +1,6 @@
 # docs index (v0.5)
 
-**Last updated:** 2025-12-21
+**Last updated:** 2025-12-23
 
 이 폴더는 FesMate 문서를 "한 문서 = 한 역할"로 관리하기 위한 문서 지도입니다.
 
@@ -21,12 +21,15 @@
 ## Tech Specs
 | 문서 | 설명 |
 |------|------|
+| `tech/database-schema.md` | Supabase DB 스키마 설계 (ERD, 테이블, RLS) |
+| `tech/supabase-migration-plan.md` | Mock → Supabase 마이그레이션 계획 |
 | `tech/call_guide.md` | 콜가이드 시스템 기술 설계 |
 | `tech/call-guide-ui-design.md` | 콜가이드 재생바 UI/UX 디자인 가이드 |
 | `tech/ingestion_crawling.md` | 수집/정규화/변경관리 파이프라인 |
 | `tech/maps_deeplink.md` | 커뮤니티 장소 입력 + 지도앱 딥링크 |
 | `tech/image_upload.md` | 이미지 업로드 기술 설계 |
 | `tech/timetable_structure.md` | 타임테이블 구조 설계 |
+| `tech/ticketbook-design.md` | 나의 티켓북 UI/UX 및 플립 애니메이션 설계 |
 
 ## Policy
 | 문서 | 설명 |

@@ -512,13 +512,41 @@
 
 ## 🔌 백엔드 연동 필요
 
-### Supabase 설정
-- [ ] DB 스키마 설계 및 마이그레이션
-- [ ] RLS (Row Level Security) 정책
+### Supabase 설정 — ✅ 설계 완료
+- [x] DB 스키마 설계 문서 (`docs/tech/database-schema.md`)
+- [x] SQL 마이그레이션 파일 작성 (`supabase/migrations/00001-00005`)
+- [x] RLS (Row Level Security) 정책 설계 (`supabase/migrations/00006_rls_policies.sql`)
+- [x] TypeScript 타입 정의 (`src/types/database.ts`)
+- [x] 마이그레이션 계획 문서 (`docs/tech/supabase-migration-plan.md`)
 - [ ] 환경변수 설정 (.env.local)
+- [ ] Supabase 프로젝트 생성 및 마이그레이션 실행
 
-### 데이터 연동
-- [ ] Mock 데이터 → Supabase 쿼리 전환
+### 데이터 연동 — 📋 계획 완료
+> 상세 마이그레이션 계획: `docs/tech/supabase-migration-plan.md`
+
+**Phase 1: Core (읽기 전용)**
+- [ ] 쿼리 함수 작성 (getEvents, getEventById)
+- [ ] EventProvider 생성 또는 기존 import 교체
+- [ ] Seed 데이터 삽입 스크립트
+
+**Phase 2: User**
+- [ ] Auth 연동 (회원가입 시 users 생성)
+- [ ] WishlistContext Supabase 연동
+- [ ] FollowContext, BlockContext Supabase 연동
+
+**Phase 3: Content**
+- [ ] posts CRUD 쿼리 작성
+- [ ] HelpfulContext, CommentContext Supabase 연동
+- [ ] Realtime 구독 설정
+
+**Phase 4: Social**
+- [ ] CrewContext Supabase 연동
+- [ ] ParticipationContext Supabase 연동
+
+**Phase 5: Guide**
+- [ ] CallGuideContext Supabase 연동
+
+### 추가 기능
 - [ ] 무한 스크롤 / 페이지네이션
 - [ ] 서버 사이드 필터/정렬
 - [ ] 이미지 업로드 (Supabase Storage)
@@ -581,13 +609,18 @@ change_suggestion (id, event_id, diff_fields, before, after, confidence, status)
 
 ## 다음 우선순위
 
-### 1순위: P0 필수 기능
-1. **양도글 티켓 사진 필수화** — 사기 방지
-2. **권한 관리** — 비로그인 시 글쓰기/찜/댓글 버튼 비활성화 및 로그인 유도
+### 1순위: P0 필수 기능 — ✅ 완료
+1. ~~**양도글 티켓 사진 필수화** — 사기 방지~~
+2. ~~**권한 관리** — 비로그인 시 글쓰기/찜/댓글 버튼 비활성화 및 로그인 유도~~
 
-### 2순위: 백엔드 연동
-- Supabase DB 스키마 설계
-- Mock 데이터 → Supabase 쿼리 전환
+### 2순위: 백엔드 연동 — 📋 설계 완료
+- [x] Supabase DB 스키마 설계 (`docs/tech/database-schema.md`)
+- [x] SQL 마이그레이션 파일 (`supabase/migrations/`)
+- [x] RLS 정책 설계 (`supabase/migrations/00006_rls_policies.sql`)
+- [x] TypeScript 타입 정의 (`src/types/database.ts`)
+- [x] 마이그레이션 계획 (`docs/tech/supabase-migration-plan.md`)
+- [ ] Supabase 프로젝트 생성 및 마이그레이션 실행
+- [ ] Mock 데이터 → Supabase 쿼리 전환
 
 ### 3순위: P1 품질 개선
 - 알림 고도화 (Quiet Hours, 중복 묶음)
@@ -674,7 +707,17 @@ src/
     ├── leaderboard.ts
     ├── badge.ts
     ├── call-guide.ts
-    └── youtube.ts
+    ├── youtube.ts
+    └── database.ts           # Supabase DB 타입 정의
+
+supabase/
+└── migrations/
+    ├── 00001_core_tables.sql     # venues, artists, events, stages, slots
+    ├── 00002_user_tables.sql     # users, user_events, follows, blocks
+    ├── 00003_content_tables.sql  # posts, comments, notifications, reports
+    ├── 00004_social_tables.sql   # crews, crew_members, participation
+    ├── 00005_guide_tables.sql    # songs, call_guides, call_guide_entries
+    └── 00006_rls_policies.sql    # RLS 정책
 
 docs/
 ├── 00_index.md               # 문서 지도
@@ -689,6 +732,8 @@ docs/
 ├── policy/
 │   └── call-guide-moderation.md # 콜가이드 모더레이션 정책
 └── tech/
+    ├── database-schema.md    # Supabase DB 스키마 설계 (ERD, 테이블, RLS)
+    ├── supabase-migration-plan.md # Mock → Supabase 마이그레이션 계획
     ├── maps_deeplink.md      # 지도 딥링크 설계
     ├── image_upload.md       # 이미지 업로드 시스템
     ├── call_guide.md         # 콜가이드 시스템 설계
