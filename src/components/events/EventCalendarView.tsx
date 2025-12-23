@@ -2,9 +2,12 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, MapPin, Calendar, CalendarDays } from "lucide-react";
+import { ChevronLeft, ChevronRight, MapPin, Calendar, CalendarDays, Star, Users } from "lucide-react";
 import { Event, getHubMode } from "@/types/event";
 import { cn } from "@/lib/utils";
+import { useWishlist } from "@/lib/wishlist-context";
+import { useFollow } from "@/lib/follow-context";
+import { useDevContext } from "@/lib/dev-context";
 
 interface EventCalendarViewProps {
     events: Event[];
@@ -23,8 +26,28 @@ export function EventCalendarView({ events }: EventCalendarViewProps) {
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
     const [viewMode, setViewMode] = useState<ViewMode>("month");
 
+    // Context hooks
+    const { isWishlist, getUserWishlist } = useWishlist();
+    const { getFollowing, currentUserId } = useFollow();
+    const { isLoggedIn } = useDevContext();
+
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
+
+    // 팔로우하는 사용자들의 찜 목록 통합
+    const followingWishlistEventIds = useMemo(() => {
+        if (!isLoggedIn) return new Set<string>();
+
+        const followingUsers = getFollowing(currentUserId);
+        const eventIds = new Set<string>();
+
+        followingUsers.forEach(user => {
+            const userWishlist = getUserWishlist(user.id);
+            userWishlist.forEach(eventId => eventIds.add(eventId));
+        });
+
+        return eventIds;
+    }, [isLoggedIn, getFollowing, currentUserId, getUserWishlist]);
 
     // 주간 뷰용: 현재 주의 시작일 (일요일 기준)
     const weekStart = useMemo(() => {
@@ -108,12 +131,40 @@ export function EventCalendarView({ events }: EventCalendarViewProps) {
         return map;
     }, [events]);
 
-    // 선택된 날짜의 이벤트
+    // 선택된 날짜의 이벤트 (우선순위 정렬: 내 찜 > 팔로우 찜 > 일반)
     const selectedEvents = useMemo(() => {
         if (!selectedDate) return [];
         const key = `${selectedDate.getFullYear()}-${selectedDate.getMonth()}-${selectedDate.getDate()}`;
-        return eventsByDate.get(key) || [];
-    }, [selectedDate, eventsByDate]);
+        const dayEvents = eventsByDate.get(key) || [];
+
+        // 우선순위 점수 계산: 내 찜(2점) > 팔로우 찜(1점) > 일반(0점)
+        const getEventPriority = (event: Event): number => {
+            let priority = 0;
+            if (isLoggedIn) {
+                if (isWishlist(event.id)) {
+                    priority += 2; // 내가 찜한 행사
+                }
+                if (followingWishlistEventIds.has(event.id)) {
+                    priority += 1; // 팔로우가 찜한 행사
+                }
+            }
+            return priority;
+        };
+
+        // 우선순위 내림차순 정렬
+        return [...dayEvents].sort((a, b) => {
+            const priorityDiff = getEventPriority(b) - getEventPriority(a);
+            if (priorityDiff !== 0) return priorityDiff;
+            // 같은 우선순위면 시작시간 순
+            return new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
+        });
+    }, [selectedDate, eventsByDate, isLoggedIn, isWishlist, followingWishlistEventIds]);
+
+    // 이벤트가 대표 카드인지 확인 (첫 번째이면서 우선순위가 있는 경우)
+    const isRepresentativeCard = (event: Event, index: number): boolean => {
+        if (index !== 0 || !isLoggedIn) return false;
+        return isWishlist(event.id) || followingWishlistEventIds.has(event.id);
+    };
 
     // 이전/다음 달
     const prevMonth = () => {
@@ -282,9 +333,16 @@ export function EventCalendarView({ events }: EventCalendarViewProps) {
                     const isPast = date < new Date(today.getFullYear(), today.getMonth(), today.getDate());
                     const dayOfWeek = date.getDay();
 
-                    // LIVE 이벤트가 있는지 확인
+                    // LIVE/RECAP 이벤트 확인
                     const hasLiveEvent = dayEvents.some(
                         (e) => getHubMode(e, now) === "LIVE" && e.status === "SCHEDULED"
+                    );
+                    const hasRecapEvent = !hasLiveEvent && dayEvents.some(
+                        (e) => getHubMode(e, now) === "RECAP" && e.status === "SCHEDULED"
+                    );
+                    // RECAP만 있는 날인지 (모든 이벤트가 RECAP)
+                    const isAllRecap = dayEvents.length > 0 && dayEvents.every(
+                        (e) => getHubMode(e, now) === "RECAP"
                     );
 
                     return (
@@ -308,6 +366,12 @@ export function EventCalendarView({ events }: EventCalendarViewProps) {
                                 <div className="flex gap-0.5 mt-0.5">
                                     {hasLiveEvent ? (
                                         <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                                    ) : hasRecapEvent || isAllRecap ? (
+                                        // RECAP 이벤트: 슬레이트 색상
+                                        <span className={cn(
+                                            "h-1.5 w-1.5 rounded-full",
+                                            isSelected ? "bg-primary-foreground" : "bg-slate-400"
+                                        )} />
                                     ) : dayEvents.length <= 3 ? (
                                         dayEvents.slice(0, 3).map((_, i) => (
                                             <span
@@ -354,9 +418,15 @@ export function EventCalendarView({ events }: EventCalendarViewProps) {
                     const isPast = date < new Date(today.getFullYear(), today.getMonth(), today.getDate());
                     const dayOfWeek = date.getDay();
 
-                    // LIVE 이벤트가 있는지 확인
+                    // LIVE/RECAP 이벤트 확인
                     const hasLiveEvent = dayEvents.some(
                         (e) => getHubMode(e, now) === "LIVE" && e.status === "SCHEDULED"
+                    );
+                    const hasRecapEvent = !hasLiveEvent && dayEvents.some(
+                        (e) => getHubMode(e, now) === "RECAP" && e.status === "SCHEDULED"
+                    );
+                    const isAllRecap = dayEvents.length > 0 && dayEvents.every(
+                        (e) => getHubMode(e, now) === "RECAP"
                     );
 
                     return (
@@ -390,6 +460,11 @@ export function EventCalendarView({ events }: EventCalendarViewProps) {
                                 <div className="flex gap-0.5 mt-1">
                                     {hasLiveEvent ? (
                                         <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                                    ) : hasRecapEvent || isAllRecap ? (
+                                        <span className={cn(
+                                            "h-1.5 w-1.5 rounded-full",
+                                            isSelected ? "bg-primary-foreground" : "bg-slate-400"
+                                        )} />
                                     ) : dayEvents.length <= 3 ? (
                                         dayEvents.slice(0, 3).map((_, i) => (
                                             <span
@@ -429,15 +504,28 @@ export function EventCalendarView({ events }: EventCalendarViewProps) {
                         </p>
                     ) : (
                         <div className="space-y-3">
-                            {selectedEvents.map((event) => {
+                            {selectedEvents.map((event, index) => {
                                 const hubMode = getHubMode(event, now);
+                                const isMyWishlist = isLoggedIn && isWishlist(event.id);
+                                const isFriendWishlist = isLoggedIn && followingWishlistEventIds.has(event.id);
+                                const isRepresentative = isRepresentativeCard(event, index);
 
                                 return (
                                     <Link
                                         key={event.id}
                                         href={`/event/${event.id}`}
-                                        className="flex gap-3 rounded-lg border bg-card p-3 hover:shadow-sm transition-shadow"
+                                        className={cn(
+                                            "flex gap-3 rounded-lg border bg-card p-3 hover:shadow-sm transition-shadow relative",
+                                            isRepresentative && "ring-2 ring-primary shadow-md"
+                                        )}
                                     >
+                                        {/* 대표 카드 배지 */}
+                                        {isRepresentative && (
+                                            <div className="absolute -top-2 left-3 px-2 py-0.5 bg-primary text-primary-foreground text-[10px] font-bold rounded-full">
+                                                추천
+                                            </div>
+                                        )}
+
                                         {/* 포스터 */}
                                         <div className="h-16 w-12 flex-shrink-0 rounded bg-muted overflow-hidden">
                                             {event.posterUrl ? (
@@ -456,7 +544,7 @@ export function EventCalendarView({ events }: EventCalendarViewProps) {
 
                                         {/* 정보 */}
                                         <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-1.5 mb-1">
+                                            <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                                                 {hubMode === "LIVE" && event.status === "SCHEDULED" && (
                                                     <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-red-500 text-white animate-pulse">
                                                         LIVE
@@ -465,6 +553,20 @@ export function EventCalendarView({ events }: EventCalendarViewProps) {
                                                 {event.status === "CANCELED" && (
                                                     <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-gray-500 text-white">
                                                         취소됨
+                                                    </span>
+                                                )}
+                                                {/* 찜 배지 */}
+                                                {isMyWishlist && (
+                                                    <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-amber-100 text-amber-700 flex items-center gap-0.5">
+                                                        <Star className="h-2.5 w-2.5 fill-amber-500" />
+                                                        내 찜
+                                                    </span>
+                                                )}
+                                                {/* 친구 찜 배지 (내 찜이 아닌 경우만) */}
+                                                {!isMyWishlist && isFriendWishlist && (
+                                                    <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-blue-100 text-blue-700 flex items-center gap-0.5">
+                                                        <Users className="h-2.5 w-2.5" />
+                                                        친구 찜
                                                     </span>
                                                 )}
                                             </div>
