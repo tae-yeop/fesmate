@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { ChevronRight, Star, CheckCircle2, MessageSquare, Users, UserPlus } from "lucide-react";
 import { useFollow, MOCK_USER_PROFILES } from "@/lib/follow-context";
@@ -41,6 +41,12 @@ export function FriendActivityFeed({ limit = 5, showViewAll = true }: FriendActi
 
     const activities = getFriendActivities().slice(0, limit);
     const suggestedUsers = getSuggestedUsers().slice(0, 3);
+
+    // Hydration 에러 방지: 클라이언트에서만 시간 표시
+    const [isClient, setIsClient] = useState(false);
+    useEffect(() => {
+        setIsClient(true);
+    }, []);
 
     // 동행 제안 모달 상태
     const [companionModal, setCompanionModal] = useState<{
@@ -218,9 +224,9 @@ export function FriendActivityFeed({ limit = 5, showViewAll = true }: FriendActi
                                 </p>
                             )}
 
-                            {/* 시간 */}
+                            {/* 시간 - 클라이언트에서만 렌더링하여 hydration 에러 방지 */}
                             <p className="mt-1 text-xs text-muted-foreground">
-                                {getRelativeTime(activity.createdAt)}
+                                {isClient ? getRelativeTime(activity.createdAt) : ""}
                             </p>
                         </div>
 
