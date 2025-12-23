@@ -258,6 +258,8 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, o
             if (!meetTime || !placeText) return false;
         }
         if (selectedType === "video" && !videoUrl.trim()) return false;
+        // 양도글은 티켓 사진 필수 (PRD 6.19 - 사기 방지)
+        if (selectedType === "transfer" && images.length === 0) return false;
         return true;
     };
 
@@ -334,6 +336,7 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, o
                             setRating={setRating}
                             videoUrl={videoUrl}
                             setVideoUrl={setVideoUrl}
+                            imageCount={images.length}
                         />
                     )}
                 </div>
@@ -358,13 +361,17 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, o
                                     "p-2 rounded transition-colors flex items-center gap-1.5",
                                     showImageUploader
                                         ? "bg-primary/10 text-primary"
-                                        : "hover:bg-accent text-muted-foreground"
+                                        : selectedType === "transfer" && images.length === 0
+                                            ? "bg-amber-100 text-amber-700 animate-pulse"
+                                            : "hover:bg-accent text-muted-foreground"
                                 )}
                             >
                                 <ImagePlus className="h-5 w-5" />
-                                {images.length > 0 && (
+                                {images.length > 0 ? (
                                     <span className="text-xs font-medium">{images.length}</span>
-                                )}
+                                ) : selectedType === "transfer" ? (
+                                    <span className="text-xs font-medium">필수</span>
+                                ) : null}
                             </button>
                             <button
                                 onClick={handleSubmit}
@@ -609,6 +616,7 @@ function ComposeForm({
     setRating,
     videoUrl,
     setVideoUrl,
+    imageCount,
 }: {
     type: PostType;
     option: PostTypeOption;
@@ -626,6 +634,7 @@ function ComposeForm({
     setRating: (v: number) => void;
     videoUrl: string;
     setVideoUrl: (v: string) => void;
+    imageCount: number;
 }) {
     const isCommunity = option.category === "community";
     const isReview = type === "review";
@@ -723,11 +732,12 @@ function ComposeForm({
             {/* 커뮤니티 추가 필드 (질문, 팁 제외) */}
             {isCommunity && type !== "question" && type !== "tip" && (
                 <>
-                    <div className="grid grid-cols-2 gap-3">
+                    {/* 양도글은 모집인원 불필요, 시간/장소만 표시 */}
+                    {type === "transfer" ? (
                         <div>
                             <label className="text-sm font-medium mb-2 flex items-center gap-1">
                                 <Clock className="h-4 w-4" />
-                                {type === "taxi" ? "출발 시간" : "만남 시간"}
+                                거래 희망 시간
                             </label>
                             <input
                                 type="datetime-local"
@@ -736,26 +746,41 @@ function ComposeForm({
                                 className="w-full rounded-lg border px-3 py-2 text-sm"
                             />
                         </div>
-                        <div>
-                            <label className="text-sm font-medium mb-2 flex items-center gap-1">
-                                <Users className="h-4 w-4" />
-                                모집 인원
-                            </label>
-                            <select
-                                value={maxPeople}
-                                onChange={(e) => setMaxPeople(Number(e.target.value))}
-                                className="w-full rounded-lg border px-3 py-2 text-sm"
-                            >
-                                {[2, 3, 4, 5, 6, 7, 8].map((n) => (
-                                    <option key={n} value={n}>{n}명</option>
-                                ))}
-                            </select>
+                    ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-sm font-medium mb-2 flex items-center gap-1">
+                                    <Clock className="h-4 w-4" />
+                                    {type === "taxi" ? "출발 시간" : "만남 시간"}
+                                </label>
+                                <input
+                                    type="datetime-local"
+                                    value={meetTime}
+                                    onChange={(e) => setMeetTime(e.target.value)}
+                                    className="w-full rounded-lg border px-3 py-2 text-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium mb-2 flex items-center gap-1">
+                                    <Users className="h-4 w-4" />
+                                    모집 인원
+                                </label>
+                                <select
+                                    value={maxPeople}
+                                    onChange={(e) => setMaxPeople(Number(e.target.value))}
+                                    className="w-full rounded-lg border px-3 py-2 text-sm"
+                                >
+                                    {[2, 3, 4, 5, 6, 7, 8].map((n) => (
+                                        <option key={n} value={n}>{n}명</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
-                    </div>
+                    )}
                     <div className="space-y-2">
                         <label className="text-sm font-medium flex items-center gap-1">
                             <MapPin className="h-4 w-4" />
-                            {type === "taxi" ? "출발 장소" : "만남 장소"}
+                            {type === "taxi" ? "출발 장소" : type === "transfer" ? "거래 장소" : "만남 장소"}
                         </label>
                         <input
                             type="text"
@@ -790,7 +815,34 @@ function ComposeForm({
                 />
             </div>
 
-            {/* 양도 경고 */}
+            {/* 양도글 티켓 사진 필수 안내 */}
+            {type === "transfer" && (
+                <div className={cn(
+                    "flex items-start gap-2 p-3 rounded-lg text-sm border",
+                    imageCount > 0
+                        ? "bg-green-50 border-green-200"
+                        : "bg-amber-50 border-amber-200"
+                )}>
+                    <Ticket className={cn(
+                        "h-4 w-4 mt-0.5",
+                        imageCount > 0 ? "text-green-600" : "text-amber-600"
+                    )} />
+                    <div className={imageCount > 0 ? "text-green-800" : "text-amber-800"}>
+                        <p className="font-medium">
+                            {imageCount > 0
+                                ? `✓ 티켓 사진 ${imageCount}장 첨부됨`
+                                : "📸 티켓 사진 필수"}
+                        </p>
+                        <p className="text-xs mt-1">
+                            {imageCount > 0
+                                ? "현물 티켓 사진이 확인되었습니다."
+                                : "사기 방지를 위해 현재 소지한 티켓 사진을 첨부해주세요. 하단 이미지 버튼을 눌러 추가할 수 있습니다."}
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {/* 양도 안전 거래 안내 */}
             {type === "transfer" && (
                 <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm">
                     <Shield className="h-4 w-4 text-red-600 mt-0.5" />
