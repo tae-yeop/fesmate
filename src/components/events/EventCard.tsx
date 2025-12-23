@@ -11,6 +11,8 @@ interface EventCardProps {
     isWishlist?: boolean;
     isAttended?: boolean;
     onWishlistToggle?: () => void;
+    /** 지난 행사 필터에서 사용 - true일 경우 RECAP 탭으로 기본 진입 */
+    isPastEvent?: boolean;
 }
 
 /**
@@ -26,10 +28,16 @@ export function EventCard({
     isWishlist = false,
     isAttended = false,
     onWishlistToggle,
+    isPastEvent = false,
 }: EventCardProps) {
     const now = new Date();
     const hubMode = getHubMode(event, now);
     const dDayBadge = getDDayBadge(event.startAt, now);
+
+    // 지난 행사일 경우 허브(RECAP) 탭으로 기본 진입
+    const eventLink = isPastEvent
+        ? `/event/${event.id}?tab=hub`
+        : `/event/${event.id}`;
 
     // 날짜 포맷
     const formatDate = (date: Date) => {
@@ -43,7 +51,7 @@ export function EventCard({
     return (
         <div className={cn("group relative", className)}>
             <Link
-                href={`/event/${event.id}`}
+                href={eventLink}
                 className="flex flex-col overflow-hidden rounded-lg border bg-card transition-all hover:shadow-md"
             >
                 {/* 포스터 */}
@@ -83,9 +91,16 @@ export function EventCard({
                         )}
 
                         {/* D-Day 배지 */}
-                        {dDayBadge && event.status === "SCHEDULED" && hubMode !== "LIVE" && (
+                        {dDayBadge && event.status === "SCHEDULED" && hubMode !== "LIVE" && hubMode !== "RECAP" && (
                             <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-primary text-primary-foreground">
                                 {dDayBadge}
+                            </span>
+                        )}
+
+                        {/* RECAP 배지 (지난 행사) */}
+                        {hubMode === "RECAP" && event.status === "SCHEDULED" && (
+                            <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-slate-600 text-white">
+                                RECAP
                             </span>
                         )}
 

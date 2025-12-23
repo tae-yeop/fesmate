@@ -10,6 +10,8 @@ interface EventListItemProps {
     isWishlist?: boolean;
     isAttended?: boolean;
     onWishlistToggle?: () => void;
+    /** 지난 행사 필터에서 사용 - true일 경우 RECAP 탭으로 기본 진입 */
+    isPastEvent?: boolean;
 }
 
 /**
@@ -20,10 +22,16 @@ export function EventListItem({
     isWishlist = false,
     isAttended = false,
     onWishlistToggle,
+    isPastEvent = false,
 }: EventListItemProps) {
     const now = new Date();
     const hubMode = getHubMode(event, now);
     const dDayBadge = getDDayBadge(event.startAt, now);
+
+    // 지난 행사일 경우 허브(RECAP) 탭으로 기본 진입
+    const eventLink = isPastEvent
+        ? `/event/${event.id}?tab=hub`
+        : `/event/${event.id}`;
 
     const formatDate = (date: Date) => {
         return new Intl.DateTimeFormat("ko-KR", {
@@ -43,7 +51,7 @@ export function EventListItem({
     return (
         <div className="group relative">
             <Link
-                href={`/event/${event.id}`}
+                href={eventLink}
                 className="flex gap-4 rounded-lg border bg-card p-4 transition-all hover:shadow-md"
             >
                 {/* 포스터 썸네일 */}
@@ -88,9 +96,16 @@ export function EventListItem({
                         )}
 
                         {/* D-Day 배지 */}
-                        {dDayBadge && event.status === "SCHEDULED" && hubMode !== "LIVE" && (
+                        {dDayBadge && event.status === "SCHEDULED" && hubMode !== "LIVE" && hubMode !== "RECAP" && (
                             <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-primary text-primary-foreground">
                                 {dDayBadge}
+                            </span>
+                        )}
+
+                        {/* RECAP 배지 (지난 행사) */}
+                        {hubMode === "RECAP" && event.status === "SCHEDULED" && (
+                            <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-slate-600 text-white">
+                                RECAP
                             </span>
                         )}
 
@@ -122,7 +137,7 @@ export function EventListItem({
                         <span className="line-clamp-1">{event.venue.name}</span>
                     </div>
 
-                    {/* 통계 + 가격 */}
+                    {/* 통계 + 아티스트/타입 */}
                     <div className="flex items-center justify-between mt-auto">
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             {event.stats && event.stats.wishlistCount > 0 && (
@@ -138,9 +153,18 @@ export function EventListItem({
                                 </span>
                             )}
                         </div>
-                        {event.price && (
-                            <span className="text-xs font-medium text-primary">
-                                {event.price.split("/")[0]}
+                        {/* 아티스트 또는 타입 표시 */}
+                        {event.artists && event.artists.length > 0 ? (
+                            <span className="text-xs text-muted-foreground line-clamp-1 max-w-[120px]">
+                                {event.artists.slice(0, 2).map(a => a.name).join(", ")}
+                                {event.artists.length > 2 && ` +${event.artists.length - 2}`}
+                            </span>
+                        ) : event.type && (
+                            <span className="text-xs text-muted-foreground">
+                                {event.type === "concert" && "콘서트"}
+                                {event.type === "festival" && "페스티벌"}
+                                {event.type === "musical" && "뮤지컬"}
+                                {event.type === "exhibition" && "전시"}
                             </span>
                         )}
                     </div>

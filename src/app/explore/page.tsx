@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Search, Grid3X3, List, Calendar, X, ChevronDown } from "lucide-react";
 import { EventCard } from "@/components/events/EventCard";
 import { EventListItem } from "@/components/events/EventListItem";
@@ -9,6 +9,9 @@ import { MOCK_EVENTS } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { Event } from "@/types/event";
 import { useWishlist } from "@/lib/wishlist-context";
+import { useAuth } from "@/lib/auth-context";
+import { useDevContext } from "@/lib/dev-context";
+import { LoginPromptModal } from "@/components/auth";
 
 type ViewType = "card" | "list" | "calendar";
 type SortType = "date" | "recent";
@@ -37,16 +40,34 @@ export default function ExplorePage() {
         freeOnly: false,
     });
     const [activeFilter, setActiveFilter] = useState<keyof Filters | null>(null);
+    const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
     // 찜/다녀옴 상태
     const { isWishlist, isAttended, toggleWishlist } = useWishlist();
 
+    // 인증 상태
+    const { user } = useAuth();
+    const { isLoggedIn: isDevLoggedIn } = useDevContext();
+    const isLoggedIn = !!user || isDevLoggedIn;
+
+    // 로그인 필요한 액션 처리
+    const handleWishlistToggle = useCallback((eventId: string) => {
+        if (isLoggedIn) {
+            toggleWishlist(eventId);
+        } else {
+            setShowLoginPrompt(true);
+        }
+    }, [isLoggedIn, toggleWishlist]);
+
     // 필터 옵션
     const filterOptions = {
         region: ["서울", "경기", "인천", "부산", "대구", "광주", "대전"],
-        period: ["이번 주", "이번 달", "3개월 내", "지난 행사"],
-        genre: ["콘서트", "페스티벌", "뮤지컬", "전시", "스포츠", "기타"],
+        period: ["이번 주", "이번 달", "3개월 내", "지난 3개월", "지난 12개월", "지난 24개월"],
+        genre: ["콘서트", "페스티벌", "뮤지컬", "전시"],
     };
+
+    // 지난 행사 필터인지 확인 (RECAP 모드 링크용)
+    const isPastEventFilter = filters.period?.includes("지난");
 
     // 필터링 및 정렬된 이벤트
     const filteredEvents = useMemo(() => {
@@ -79,7 +100,6 @@ export default function ExplorePage() {
                 "페스티벌": "festival",
                 "뮤지컬": "musical",
                 "전시": "exhibition",
-                "스포츠": "sports",
             };
             events = events.filter((e) => e.type === genreMap[filters.genre!]);
         }
@@ -97,18 +117,24 @@ export default function ExplorePage() {
         if (filters.period) {
             const now = new Date();
             events = events.filter((e) => {
+                const endAt = e.endAt ? new Date(e.endAt) : new Date(e.startAt);
                 const startAt = new Date(e.startAt);
-                const diffDays = Math.ceil((startAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                const futureDiffDays = Math.ceil((startAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                const pastDiffDays = Math.ceil((now.getTime() - endAt.getTime()) / (1000 * 60 * 60 * 24));
 
                 switch (filters.period) {
                     case "이번 주":
-                        return diffDays >= 0 && diffDays <= 7;
+                        return futureDiffDays >= 0 && futureDiffDays <= 7;
                     case "이번 달":
-                        return diffDays >= 0 && diffDays <= 30;
+                        return futureDiffDays >= 0 && futureDiffDays <= 30;
                     case "3개월 내":
-                        return diffDays >= 0 && diffDays <= 90;
-                    case "지난 행사":
-                        return diffDays < 0;
+                        return futureDiffDays >= 0 && futureDiffDays <= 90;
+                    case "지난 3개월":
+                        return pastDiffDays > 0 && pastDiffDays <= 90;
+                    case "지난 12개월":
+                        return pastDiffDays > 0 && pastDiffDays <= 365;
+                    case "지난 24개월":
+                        return pastDiffDays > 0 && pastDiffDays <= 730;
                     default:
                         return true;
                 }
@@ -116,8 +142,19 @@ export default function ExplorePage() {
         }
 
         // 정렬
+        const isPastFilter = filters.period?.includes("지난");
         if (sort === "date") {
-            events.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+            if (isPastFilter) {
+                // 지난 행사: 최근 종료된 순서 (내림차순)
+                events.sort((a, b) => {
+                    const endAtA = a.endAt ? new Date(a.endAt) : new Date(a.startAt);
+                    const endAtB = b.endAt ? new Date(b.endAt) : new Date(b.startAt);
+                    return endAtB.getTime() - endAtA.getTime();
+                });
+            } else {
+                // 예정 행사: 가까운 날짜순 (오름차순)
+                events.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+            }
         } else {
             events.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         }
@@ -337,7 +374,8 @@ export default function ExplorePage() {
                                 event={event}
                                 isWishlist={isWishlist(event.id)}
                                 isAttended={isAttended(event.id)}
-                                onWishlistToggle={() => toggleWishlist(event.id)}
+                                onWishlistToggle={() => handleWishlistToggle(event.id)}
+                                isPastEvent={isPastEventFilter}
                             />
                         ))}
                     </div>
@@ -351,7 +389,8 @@ export default function ExplorePage() {
                                 event={event}
                                 isWishlist={isWishlist(event.id)}
                                 isAttended={isAttended(event.id)}
-                                onWishlistToggle={() => toggleWishlist(event.id)}
+                                onWishlistToggle={() => handleWishlistToggle(event.id)}
+                                isPastEvent={isPastEventFilter}
                             />
                         ))}
                     </div>
@@ -379,6 +418,13 @@ export default function ExplorePage() {
                     </div>
                 )}
             </div>
+
+            {/* Login Prompt Modal */}
+            <LoginPromptModal
+                isOpen={showLoginPrompt}
+                onClose={() => setShowLoginPrompt(false)}
+                action="찜하기"
+            />
         </div>
     );
 }
