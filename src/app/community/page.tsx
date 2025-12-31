@@ -34,13 +34,14 @@ import {
     Cake,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MOCK_EVENTS, MOCK_USERS, getCommunityPosts } from "@/lib/mock-data";
+import { MOCK_EVENTS, MOCK_USERS } from "@/lib/mock-data";
+import { usePost } from "@/lib/post-context";
 import { Post, POST_TYPE_LABELS, PostType, checkBumpAvailability } from "@/types/post";
 import { PostComposer } from "@/components/posts/PostComposer";
 import { PostDetailModal } from "@/components/posts/PostDetailModal";
 import { PostActionMenu } from "@/components/safety";
 import { MapActionSheet } from "@/components/maps";
-import { getDefaultMapApp, openMap } from "@/lib/utils/map-deeplink";
+import { getDefaultMapApp, hasDefaultMapApp, openMap } from "@/lib/utils/map-deeplink";
 import { maskContactInfo } from "@/lib/utils/contact-mask";
 import { useAuth } from "@/lib/auth-context";
 import { useDevContext } from "@/lib/dev-context";
@@ -85,6 +86,7 @@ export default function CommunityPage() {
     const { isBlocked } = useBlock();
     const { allCrews, myCrews, joinCrew, isMember, getCrewStats } = useCrew();
     const { hasRequested } = useJoin();
+    const { getCommunityPosts, isLoading: isPostsLoading, isFromSupabase } = usePost();
     const {
         getReceivedRequests,
         getSentRequests,
@@ -268,9 +270,9 @@ export default function CommunityPage() {
 
     // 지도 보기 핸들러
     const handleOpenMap = (placeText: string, placeHint?: string) => {
-        const defaultApp = getDefaultMapApp();
         // 기본 지도앱이 설정되어 있으면 바로 열기
-        if (defaultApp && localStorage.getItem("fesmate_default_map_app")) {
+        if (hasDefaultMapApp()) {
+            const defaultApp = getDefaultMapApp();
             openMap(defaultApp, placeText, placeHint);
         } else {
             // 설정 안 되어 있으면 액션시트 표시

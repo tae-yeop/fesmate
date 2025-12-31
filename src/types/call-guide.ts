@@ -132,6 +132,9 @@ export interface CallGuideEntry {
     textOriginal?: string;       // 원문 (일본어/영어 등)
     instruction?: string;        // 추가 설명
     intensity?: 1 | 2 | 3;       // 강도 (1: 약, 2: 보통, 3: 강)
+    // 작성자 & 도움됨 (개별 엔트리용)
+    createdBy?: string;          // 엔트리 작성자 ID
+    helpfulCount?: number;       // 엔트리별 도움됨 카운트
 }
 
 /** 콜가이드 상태 */

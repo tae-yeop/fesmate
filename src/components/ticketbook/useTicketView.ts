@@ -1,24 +1,28 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { ViewMode } from "./TicketViewToggle";
+import { createDeviceAdapter, DOMAINS } from "@/lib/storage";
 
-const STORAGE_KEY = "fesmate_ticketbook_view";
+// Storage adapter (기기별 설정)
+const viewModeAdapter = createDeviceAdapter<ViewMode>({
+  domain: DOMAINS.TICKETBOOK_VIEW,
+});
 
 /**
  * 티켓북 뷰 모드 관리 훅
- * - localStorage에 설정 저장
+ * - Storage에 설정 저장
  * - 기본값: landscape (가로로 긴 카드)
  */
 export function useTicketView(defaultMode: ViewMode = "landscape") {
   const [viewMode, setViewMode] = useState<ViewMode>(defaultMode);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // localStorage에서 설정 로드
+  // Storage에서 설정 로드
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = viewModeAdapter.get();
     if (saved && ["portrait", "landscape", "auto"].includes(saved)) {
-      setViewMode(saved as ViewMode);
+      setViewMode(saved);
     }
     setIsLoaded(true);
   }, []);
@@ -26,7 +30,7 @@ export function useTicketView(defaultMode: ViewMode = "landscape") {
   // 뷰 모드 변경 및 저장
   const changeViewMode = useCallback((mode: ViewMode) => {
     setViewMode(mode);
-    localStorage.setItem(STORAGE_KEY, mode);
+    viewModeAdapter.set(mode);
   }, []);
 
   return {

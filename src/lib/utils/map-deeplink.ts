@@ -5,6 +5,8 @@
  * 참조: docs/tech/maps_deeplink.md
  */
 
+import { createDeviceAdapter, DOMAINS } from "@/lib/storage";
+
 /** 지원하는 지도 앱 타입 */
 export type MapProvider = "google" | "kakao" | "naver" | "web";
 
@@ -46,18 +48,18 @@ export const MAP_APPS: MapAppInfo[] = [
     },
 ];
 
-/** localStorage에서 기본 지도 앱 설정 키 */
-const STORAGE_KEY = "fesmate_default_map_app";
+// Storage adapter for default map app (기기별 설정)
+const defaultMapAppAdapter = createDeviceAdapter<MapProvider>({
+    domain: DOMAINS.MAP_APP,
+});
 
 /**
  * 기본 지도 앱 설정 가져오기
  */
 export function getDefaultMapApp(): MapProvider {
-    if (typeof window === "undefined") return "google";
-
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = defaultMapAppAdapter.get();
     if (saved && ["google", "kakao", "naver", "web"].includes(saved)) {
-        return saved as MapProvider;
+        return saved;
     }
     return "google";
 }
@@ -66,8 +68,14 @@ export function getDefaultMapApp(): MapProvider {
  * 기본 지도 앱 설정 저장
  */
 export function setDefaultMapApp(provider: MapProvider): void {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(STORAGE_KEY, provider);
+    defaultMapAppAdapter.set(provider);
+}
+
+/**
+ * 사용자가 기본 지도 앱을 설정했는지 확인
+ */
+export function hasDefaultMapApp(): boolean {
+    return defaultMapAppAdapter.exists();
 }
 
 /**

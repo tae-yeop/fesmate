@@ -1,10 +1,26 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
-import { Comment, CreateCommentInput } from "@/types/comment";
+import { Comment as CommentType, CreateCommentInput } from "@/types/comment";
+import { createSharedAdapter, DOMAINS } from "./storage";
+import { useAuth } from "./auth-context";
+import { isValidUUID } from "./utils";
+import {
+    getCommentsByPostId as getCommentsFromDB,
+    createComment as createCommentInDB,
+    updateComment as updateCommentInDB,
+    deleteComment as deleteCommentInDB,
+    Comment as DbComment,
+} from "./supabase/queries/comments";
+
+// Storage adapter (전역 공유 데이터 - 비로그인 시 사용)
+const commentsAdapter = createSharedAdapter<CommentType[]>({
+    domain: DOMAINS.COMMENTS,
+    dateFields: ["createdAt", "updatedAt"],
+});
 
 // 초기 Mock 댓글 데이터
-const INITIAL_COMMENTS: Comment[] = [
+const INITIAL_COMMENTS: CommentType[] = [
     // post3 (동행) 댓글
     {
         id: "c1",
@@ -83,57 +99,89 @@ const INITIAL_COMMENTS: Comment[] = [
     },
 ];
 
-const STORAGE_KEY = "fesmate_comments";
+/**
+ * DB Comment를 Context Comment 타입으로 변환
+ */
+function transformDbComment(dbComment: DbComment): CommentType {
+    return {
+        id: dbComment.id,
+        postId: dbComment.postId,
+        userId: dbComment.userId,
+        content: dbComment.content,
+        parentId: dbComment.parentId,
+        isDeleted: dbComment.isDeleted,
+        createdAt: dbComment.createdAt,
+        updatedAt: dbComment.updatedAt,
+    };
+}
 
 interface CommentContextType {
     // 특정 포스트의 댓글 가져오기
-    getCommentsByPostId: (postId: string) => Comment[];
+    getCommentsByPostId: (postId: string) => CommentType[];
     // 댓글 개수 가져오기
     getCommentCount: (postId: string) => number;
     // 댓글 추가
-    addComment: (input: CreateCommentInput) => Comment;
+    addComment: (input: CreateCommentInput) => Promise<CommentType>;
     // 댓글 삭제
-    deleteComment: (commentId: string) => void;
+    deleteComment: (commentId: string) => Promise<void>;
     // 댓글 수정
-    updateComment: (commentId: string, content: string) => void;
+    updateComment: (commentId: string, content: string) => Promise<void>;
+    // 특정 포스트 댓글 로드 (Supabase에서)
+    loadCommentsForPost: (postId: string) => Promise<void>;
+    // 로딩 상태
+    loading: boolean;
 }
 
 const CommentContext = createContext<CommentContextType | undefined>(undefined);
 
 export function CommentProvider({ children }: { children: ReactNode }) {
-    const [comments, setComments] = useState<Comment[]>([]);
+    const { user } = useAuth();
+    const [comments, setComments] = useState<CommentType[]>([]);
     const [isInitialized, setIsInitialized] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [loadedPostIds, setLoadedPostIds] = useState<Set<string>>(new Set());
 
-    // localStorage에서 댓글 로드
+    // 초기 로드 (localStorage에서 Mock 데이터)
     useEffect(() => {
-        if (typeof window !== "undefined") {
-            const stored = localStorage.getItem(STORAGE_KEY);
-            if (stored) {
-                try {
-                    const parsed = JSON.parse(stored);
-                    // Date 문자열을 Date 객체로 변환
-                    const commentsWithDates = parsed.map((c: Comment) => ({
-                        ...c,
-                        createdAt: new Date(c.createdAt),
-                        updatedAt: c.updatedAt ? new Date(c.updatedAt) : undefined,
-                    }));
-                    setComments(commentsWithDates);
-                } catch {
-                    setComments(INITIAL_COMMENTS);
-                }
-            } else {
-                setComments(INITIAL_COMMENTS);
-            }
-            setIsInitialized(true);
+        const stored = commentsAdapter.get();
+        if (stored) {
+            setComments(stored);
+        } else {
+            setComments(INITIAL_COMMENTS);
         }
+        setIsInitialized(true);
     }, []);
 
-    // 댓글 변경 시 localStorage에 저장
+    // 댓글 변경 시 Storage에 항상 저장 (Mock 데이터 유지용)
     useEffect(() => {
-        if (isInitialized && typeof window !== "undefined") {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(comments));
+        if (isInitialized) {
+            commentsAdapter.set(comments);
         }
     }, [comments, isInitialized]);
+
+    // 특정 포스트의 댓글 Supabase에서 로드
+    const loadCommentsForPost = useCallback(async (postId: string) => {
+        if (!user || loadedPostIds.has(postId)) return;
+
+        setLoading(true);
+        try {
+            const dbComments = await getCommentsFromDB(postId);
+            const newComments = dbComments.map(transformDbComment);
+
+            setComments(prev => {
+                // 기존 댓글 중 해당 postId 제거하고 새로운 댓글로 교체
+                const otherComments = prev.filter(c => c.postId !== postId);
+                return [...otherComments, ...newComments];
+            });
+
+            setLoadedPostIds(prev => new Set(prev).add(postId));
+        } catch (error) {
+            console.error("[CommentContext] Load comments failed:", error);
+            // 에러 시 기존 로컬 데이터 유지
+        } finally {
+            setLoading(false);
+        }
+    }, [user, loadedPostIds]);
 
     // 특정 포스트의 댓글 가져오기
     const getCommentsByPostId = useCallback((postId: string) => {
@@ -148,30 +196,69 @@ export function CommentProvider({ children }: { children: ReactNode }) {
     }, [comments]);
 
     // 댓글 추가
-    const addComment = useCallback((input: CreateCommentInput): Comment => {
-        const newComment: Comment = {
-            id: `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            postId: input.postId,
-            userId: input.userId,
-            content: input.content,
-            parentId: input.parentId,
-            createdAt: new Date(),
-        };
-        setComments(prev => [...prev, newComment]);
-        return newComment;
-    }, []);
+    const addComment = useCallback(async (input: CreateCommentInput): Promise<CommentType> => {
+        // 로그인 + 유효한 UUID인 경우에만 Supabase에 저장
+        if (user && isValidUUID(input.postId)) {
+            try {
+                const dbComment = await createCommentInDB({
+                    postId: input.postId,
+                    userId: user.id,
+                    content: input.content,
+                    parentId: input.parentId,
+                });
+                const newComment = transformDbComment(dbComment);
+                setComments(prev => [...prev, newComment]);
+                return newComment;
+            } catch (error) {
+                console.error("[CommentContext] Add comment failed:", error);
+                throw error;
+            }
+        } else {
+            // 비로그인 또는 Mock postId인 경우 localStorage에 저장
+            const newComment: CommentType = {
+                id: `c_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                postId: input.postId,
+                userId: user?.id || input.userId,
+                content: input.content,
+                parentId: input.parentId,
+                createdAt: new Date(),
+            };
+            setComments(prev => [...prev, newComment]);
+            return newComment;
+        }
+    }, [user]);
 
     // 댓글 삭제 (soft delete)
-    const deleteComment = useCallback((commentId: string) => {
+    const deleteComment = useCallback(async (commentId: string) => {
+        // Optimistic update
         setComments(prev =>
             prev.map(c =>
                 c.id === commentId ? { ...c, isDeleted: true } : c
             )
         );
-    }, []);
+
+        // 로그인 + 유효한 UUID인 경우에만 Supabase에 저장
+        if (user && isValidUUID(commentId)) {
+            try {
+                await deleteCommentInDB(commentId);
+            } catch (error) {
+                console.error("[CommentContext] Delete comment failed:", error);
+                // 롤백
+                setComments(prev =>
+                    prev.map(c =>
+                        c.id === commentId ? { ...c, isDeleted: false } : c
+                    )
+                );
+            }
+        }
+    }, [user]);
 
     // 댓글 수정
-    const updateComment = useCallback((commentId: string, content: string) => {
+    const updateComment = useCallback(async (commentId: string, content: string) => {
+        const originalComment = comments.find(c => c.id === commentId);
+        if (!originalComment) return;
+
+        // Optimistic update
         setComments(prev =>
             prev.map(c =>
                 c.id === commentId
@@ -179,7 +266,22 @@ export function CommentProvider({ children }: { children: ReactNode }) {
                     : c
             )
         );
-    }, []);
+
+        // 로그인 + 유효한 UUID인 경우에만 Supabase에 저장
+        if (user && isValidUUID(commentId)) {
+            try {
+                await updateCommentInDB(commentId, content);
+            } catch (error) {
+                console.error("[CommentContext] Update comment failed:", error);
+                // 롤백
+                setComments(prev =>
+                    prev.map(c =>
+                        c.id === commentId ? originalComment : c
+                    )
+                );
+            }
+        }
+    }, [comments, user]);
 
     return (
         <CommentContext.Provider
@@ -189,6 +291,8 @@ export function CommentProvider({ children }: { children: ReactNode }) {
                 addComment,
                 deleteComment,
                 updateComment,
+                loadCommentsForPost,
+                loading,
             }}
         >
             {children}

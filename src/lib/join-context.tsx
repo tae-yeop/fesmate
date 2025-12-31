@@ -6,10 +6,12 @@ import {
     useState,
     useEffect,
     useCallback,
+    useMemo,
     ReactNode,
 } from "react";
 import { useDevContext } from "./dev-context";
 import { useAuth } from "./auth-context";
+import { createUserAdapter, DOMAINS } from "./storage";
 
 // 참여 신청 정보
 interface JoinRequest {
@@ -35,49 +37,43 @@ interface JoinContextValue {
 
 const JoinContext = createContext<JoinContextValue | null>(null);
 
-const STORAGE_KEY_PREFIX = "fesmate_join_requests_";
+// Storage adapter factory (userId 기반)
+const createJoinAdapter = createUserAdapter<JoinRequest[]>({
+    domain: DOMAINS.JOIN_REQUESTS,
+    dateFields: ["createdAt"],
+});
 
 export function JoinProvider({ children }: { children: ReactNode }) {
     const { user } = useAuth();
-    const { isLoggedIn: isDevLoggedIn, mockUserId } = useDevContext();
+    const { mockUserId } = useDevContext();
 
     const currentUserId = user?.id || mockUserId;
-    const storageKey = `${STORAGE_KEY_PREFIX}${currentUserId || "guest"}`;
 
     const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
 
-    // localStorage에서 불러오기
+    // Storage adapter (userId 변경 시 재생성)
+    const joinAdapter = useMemo(
+        () => createJoinAdapter(currentUserId),
+        [currentUserId]
+    );
+
+    // Storage에서 불러오기
     useEffect(() => {
         if (!currentUserId) {
             setJoinRequests([]);
             return;
         }
 
-        try {
-            const stored = localStorage.getItem(storageKey);
-            if (stored) {
-                const parsed = JSON.parse(stored);
-                // Date 객체 복원
-                const restored = parsed.map((req: JoinRequest) => ({
-                    ...req,
-                    createdAt: new Date(req.createdAt),
-                }));
-                setJoinRequests(restored);
-            }
-        } catch (error) {
-            console.error("Failed to load join requests:", error);
-        }
-    }, [storageKey, currentUserId]);
+        // Date 복원은 adapter에서 처리됨
+        const stored = joinAdapter.get();
+        setJoinRequests(stored || []);
+    }, [currentUserId, joinAdapter]);
 
-    // localStorage에 저장
+    // Storage에 저장
     const saveToStorage = useCallback((requests: JoinRequest[]) => {
         if (!currentUserId) return;
-        try {
-            localStorage.setItem(storageKey, JSON.stringify(requests));
-        } catch (error) {
-            console.error("Failed to save join requests:", error);
-        }
-    }, [storageKey, currentUserId]);
+        joinAdapter.set(requests);
+    }, [currentUserId, joinAdapter]);
 
     // 참여 신청
     const requestJoin = useCallback((postId: string, message: string) => {

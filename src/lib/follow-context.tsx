@@ -6,6 +6,7 @@ import {
     useState,
     useEffect,
     useCallback,
+    useMemo,
     ReactNode,
 } from "react";
 import {
@@ -15,8 +16,23 @@ import {
     FollowStatus,
 } from "@/types/follow";
 import { useDevContext } from "./dev-context";
+import { useAuth } from "./auth-context";
+import { createSharedAdapter, DOMAINS } from "./storage";
+import {
+    getFollowers as getFollowersFromDb,
+    getFollowing as getFollowingFromDb,
+    getAllFollows,
+    followUser,
+    unfollowUser,
+    isMutualFollow as checkMutualFollow,
+    getFollowCounts,
+} from "./supabase/queries";
+import {
+    getUserProfiles,
+    type UserProfile as DbUserProfile,
+} from "./supabase/queries";
 
-// ===== Mock 사용자 프로필 데이터 =====
+// ===== Mock 사용자 프로필 데이터 (Dev 모드용) =====
 
 export const MOCK_USER_PROFILES: UserProfile[] = [
     {
@@ -85,7 +101,7 @@ export const MOCK_USER_PROFILES: UserProfile[] = [
     },
 ];
 
-// ===== Mock 팔로우 관계 데이터 =====
+// ===== Mock 팔로우 관계 데이터 (Dev 모드용) =====
 
 export const MOCK_FOLLOWS: Follow[] = [
     // user1의 팔로잉
@@ -171,7 +187,7 @@ export const MOCK_FRIEND_ACTIVITIES: FriendActivity[] = [
 
 interface FollowContextValue {
     /** 현재 사용자 ID */
-    currentUserId: string;
+    currentUserId: string | null;
     /** 사용자 프로필 조회 */
     getUserProfile: (userId: string) => UserProfile | undefined;
     /** 팔로워 목록 조회 */
@@ -196,66 +212,178 @@ interface FollowContextValue {
     getFollowingCount: (userId: string) => number;
     /** 현재 사용자와 특정 사용자가 맞팔인지 확인 */
     isMutualFollow: (targetUserId: string) => boolean;
+    /** 데이터 소스 표시 */
+    isFromSupabase: boolean;
+    /** 로딩 상태 */
+    isLoading: boolean;
 }
 
 const FollowContext = createContext<FollowContextValue | null>(null);
 
-const STORAGE_KEY_FOLLOWS = "fesmate_follows";
+// Storage adapter (전역 공유 데이터) - Dev 모드용
+const followsAdapter = createSharedAdapter<Follow[]>({
+    domain: DOMAINS.FOLLOWS,
+    dateFields: ["createdAt"],
+});
+
+// DB UserProfile을 Frontend UserProfile로 변환
+function transformDbProfileToUserProfile(dbProfile: DbUserProfile): UserProfile {
+    return {
+        id: dbProfile.id,
+        nickname: dbProfile.nickname,
+        avatar: dbProfile.profileImage || "🎵",
+        bio: dbProfile.bio || undefined,
+        followerCount: dbProfile.followerCount,
+        followingCount: dbProfile.followingCount,
+        attendedCount: dbProfile.attendedCount,
+        joinedAt: dbProfile.createdAt,
+        featuredBadges: dbProfile.featuredBadges || undefined,
+    };
+}
 
 export function FollowProvider({ children }: { children: ReactNode }) {
-    const { mockUserId } = useDevContext();
-    const currentUserId = mockUserId || "user1"; // Dev 모드 사용자 ID 또는 기본값
+    const { mockUserId, isLoggedIn: isDevLoggedIn } = useDevContext();
+    const { user: authUser } = useAuth();
 
-    const [follows, setFollows] = useState<Follow[]>(MOCK_FOLLOWS);
-    const [isInitialized, setIsInitialized] = useState(false);
+    // 실제 인증 사용자가 있으면 Supabase 사용, 없으면 Dev 모드 또는 비로그인
+    const realUserId = authUser?.id;
+    const isRealUser = !!realUserId;
 
-    // localStorage에서 불러오기
+    // Dev 모드에서 mockUserId 사용
+    const devUserId = isDevLoggedIn ? (mockUserId || "user1") : null;
+
+    // 최종 사용자 ID (실제 > Dev > null)
+    const currentUserId = realUserId || devUserId;
+
+    const [follows, setFollows] = useState<Follow[]>([]);
+    const [userProfiles, setUserProfiles] = useState<Map<string, UserProfile>>(new Map());
+    const [isLoading, setIsLoading] = useState(false);
+    const [isFromSupabase, setIsFromSupabase] = useState(false);
+    const [loadedUserId, setLoadedUserId] = useState<string | null | undefined>(undefined);
+
+    // 사용자 변경 또는 초기 로드 시 데이터 로드
     useEffect(() => {
-        const stored = localStorage.getItem(STORAGE_KEY_FOLLOWS);
-        if (stored) {
-            try {
-                const parsed = JSON.parse(stored);
-                setFollows(parsed.map((f: Follow) => ({
-                    ...f,
-                    createdAt: new Date(f.createdAt),
-                })));
-            } catch {
-                console.error("Failed to parse follows from localStorage");
+        // 사용자가 변경되었거나 처음 로드하는 경우
+        if (loadedUserId !== currentUserId) {
+            // 비로그인 시에는 Mock 데이터 사용
+            if (!currentUserId) {
+                setFollows(MOCK_FOLLOWS);
+                const mockProfiles = new Map<string, UserProfile>();
+                MOCK_USER_PROFILES.forEach(p => mockProfiles.set(p.id, p));
+                setUserProfiles(mockProfiles);
+                setLoadedUserId(currentUserId);
+                setIsFromSupabase(false);
+                return;
             }
-        }
-        setIsInitialized(true);
-    }, []);
 
-    // localStorage에 저장
-    useEffect(() => {
-        if (isInitialized) {
-            localStorage.setItem(STORAGE_KEY_FOLLOWS, JSON.stringify(follows));
+            // 실제 사용자: Supabase에서 로드
+            if (isRealUser && realUserId) {
+                setIsLoading(true);
+                getAllFollows(realUserId)
+                    .then(async (followData) => {
+                        // getAllFollows는 이미 camelCase로 변환된 데이터 반환
+                        setFollows(followData);
+
+                        // 관련 사용자 ID 수집
+                        const userIds = new Set<string>();
+                        userIds.add(realUserId);
+                        followData.forEach(f => {
+                            userIds.add(f.followerId);
+                            userIds.add(f.followingId);
+                        });
+
+                        // 사용자 프로필 로드
+                        try {
+                            const profiles = await getUserProfiles(Array.from(userIds));
+                            const profileMap = new Map<string, UserProfile>();
+                            profiles.forEach(p => {
+                                profileMap.set(p.id, transformDbProfileToUserProfile(p));
+                            });
+                            setUserProfiles(profileMap);
+                        } catch (error) {
+                            console.error("[FollowContext] Failed to load user profiles:", error);
+                        }
+
+                        setIsFromSupabase(true);
+                    })
+                    .catch((error) => {
+                        console.error("[FollowContext] Supabase load failed:", error);
+                        // Supabase 실패 시 Mock 데이터로 폴백
+                        setFollows(MOCK_FOLLOWS);
+                        const mockProfiles = new Map<string, UserProfile>();
+                        MOCK_USER_PROFILES.forEach(p => mockProfiles.set(p.id, p));
+                        setUserProfiles(mockProfiles);
+                        setIsFromSupabase(false);
+                    })
+                    .finally(() => {
+                        setIsLoading(false);
+                        setLoadedUserId(currentUserId);
+                    });
+                return;
+            }
+
+            // Dev 모드: localStorage에서 로드
+            const stored = followsAdapter.get();
+            if (stored) {
+                setFollows(stored);
+            } else {
+                setFollows(MOCK_FOLLOWS);
+            }
+
+            // Dev 모드에서는 Mock 프로필 사용
+            const mockProfiles = new Map<string, UserProfile>();
+            MOCK_USER_PROFILES.forEach(p => mockProfiles.set(p.id, p));
+            setUserProfiles(mockProfiles);
+
+            setLoadedUserId(currentUserId);
+            setIsFromSupabase(false);
         }
-    }, [follows, isInitialized]);
+    }, [currentUserId, loadedUserId, isRealUser, realUserId]);
+
+    // localStorage에 저장 (Dev 모드만)
+    useEffect(() => {
+        if (isRealUser || loadedUserId !== currentUserId) return;
+        if (currentUserId && follows.length > 0) {
+            followsAdapter.set(follows);
+        }
+    }, [follows, isRealUser, currentUserId, loadedUserId]);
 
     // 사용자 프로필 조회
     const getUserProfile = useCallback((userId: string) => {
+        // 캐시된 프로필 반환
+        const cached = userProfiles.get(userId);
+        if (cached) return cached;
+
+        // Dev 모드 폴백
         return MOCK_USER_PROFILES.find(u => u.id === userId);
-    }, []);
+    }, [userProfiles]);
 
     // 팔로워 목록
-    const getFollowers = useCallback((userId: string) => {
+    const getFollowersFn = useCallback((userId: string) => {
         const followerIds = follows
             .filter(f => f.followingId === userId)
             .map(f => f.followerId);
-        return MOCK_USER_PROFILES.filter(u => followerIds.includes(u.id));
-    }, [follows]);
+
+        return followerIds
+            .map(id => userProfiles.get(id) || MOCK_USER_PROFILES.find(u => u.id === id))
+            .filter((p): p is UserProfile => p !== undefined);
+    }, [follows, userProfiles]);
 
     // 팔로잉 목록
-    const getFollowing = useCallback((userId: string) => {
+    const getFollowingFn = useCallback((userId: string) => {
         const followingIds = follows
             .filter(f => f.followerId === userId)
             .map(f => f.followingId);
-        return MOCK_USER_PROFILES.filter(u => followingIds.includes(u.id));
-    }, [follows]);
+
+        return followingIds
+            .map(id => userProfiles.get(id) || MOCK_USER_PROFILES.find(u => u.id === id))
+            .filter((p): p is UserProfile => p !== undefined);
+    }, [follows, userProfiles]);
 
     // 팔로우 상태
     const getFollowStatus = useCallback((targetUserId: string): FollowStatus => {
+        if (!currentUserId) return "none";
+
         const iFollow = follows.some(
             f => f.followerId === currentUserId && f.followingId === targetUserId
         );
@@ -270,31 +398,64 @@ export function FollowProvider({ children }: { children: ReactNode }) {
     }, [follows, currentUserId]);
 
     // 팔로우하기
-    const follow = useCallback((targetUserId: string) => {
-        if (targetUserId === currentUserId) return;
+    const followFn = useCallback((targetUserId: string) => {
+        if (!currentUserId || targetUserId === currentUserId) return;
 
         const exists = follows.some(
             f => f.followerId === currentUserId && f.followingId === targetUserId
         );
         if (exists) return;
 
+        // Optimistic update
         const newFollow: Follow = {
             followerId: currentUserId,
             followingId: targetUserId,
             createdAt: new Date(),
         };
         setFollows(prev => [...prev, newFollow]);
-    }, [follows, currentUserId]);
+
+        // 실제 사용자: Supabase에 저장
+        if (isRealUser && realUserId) {
+            followUser(realUserId, targetUserId).catch((error) => {
+                console.error("[FollowContext] follow failed:", error);
+                // 롤백
+                setFollows(prev => prev.filter(
+                    f => !(f.followerId === currentUserId && f.followingId === targetUserId)
+                ));
+            });
+        }
+        // Dev 모드: localStorage는 useEffect에서 자동 저장
+    }, [follows, currentUserId, isRealUser, realUserId]);
 
     // 언팔로우
-    const unfollow = useCallback((targetUserId: string) => {
+    const unfollowFn = useCallback((targetUserId: string) => {
+        if (!currentUserId) return;
+
+        const existingFollow = follows.find(
+            f => f.followerId === currentUserId && f.followingId === targetUserId
+        );
+        if (!existingFollow) return;
+
+        // Optimistic update
         setFollows(prev => prev.filter(
             f => !(f.followerId === currentUserId && f.followingId === targetUserId)
         ));
-    }, [currentUserId]);
+
+        // 실제 사용자: Supabase에서 삭제
+        if (isRealUser && realUserId) {
+            unfollowUser(realUserId, targetUserId).catch((error) => {
+                console.error("[FollowContext] unfollow failed:", error);
+                // 롤백
+                setFollows(prev => [...prev, existingFollow]);
+            });
+        }
+        // Dev 모드: localStorage는 useEffect에서 자동 저장
+    }, [follows, currentUserId, isRealUser, realUserId]);
 
     // 친구(맞팔) 목록
     const getFriends = useCallback(() => {
+        if (!currentUserId) return [];
+
         const myFollowing = follows
             .filter(f => f.followerId === currentUserId)
             .map(f => f.followingId);
@@ -303,11 +464,15 @@ export function FollowProvider({ children }: { children: ReactNode }) {
             .map(f => f.followerId);
 
         const mutualIds = myFollowing.filter(id => myFollowers.includes(id));
-        return MOCK_USER_PROFILES.filter(u => mutualIds.includes(u.id));
-    }, [follows, currentUserId]);
+        return mutualIds
+            .map(id => userProfiles.get(id) || MOCK_USER_PROFILES.find(u => u.id === id))
+            .filter((p): p is UserProfile => p !== undefined);
+    }, [follows, currentUserId, userProfiles]);
 
-    // 친구 활동 피드
+    // 친구 활동 피드 (TODO: Supabase 연동 필요)
     const getFriendActivities = useCallback(() => {
+        if (!currentUserId) return [];
+
         const followingIds = follows
             .filter(f => f.followerId === currentUserId)
             .map(f => f.followingId);
@@ -319,14 +484,22 @@ export function FollowProvider({ children }: { children: ReactNode }) {
 
     // 추천 사용자
     const getSuggestedUsers = useCallback(() => {
+        if (!currentUserId) return [];
+
         const followingIds = follows
             .filter(f => f.followerId === currentUserId)
             .map(f => f.followingId);
 
-        return MOCK_USER_PROFILES.filter(
+        // 캐시된 프로필 + Mock 프로필에서 추천
+        const allProfiles = [
+            ...Array.from(userProfiles.values()),
+            ...MOCK_USER_PROFILES.filter(p => !userProfiles.has(p.id)),
+        ];
+
+        return allProfiles.filter(
             u => u.id !== currentUserId && !followingIds.includes(u.id)
         );
-    }, [follows, currentUserId]);
+    }, [follows, currentUserId, userProfiles]);
 
     // 팔로워/팔로잉 수
     const getFollowerCount = useCallback((userId: string) => {
@@ -338,7 +511,9 @@ export function FollowProvider({ children }: { children: ReactNode }) {
     }, [follows]);
 
     // 현재 사용자와 특정 사용자가 맞팔인지 확인
-    const isMutualFollow = useCallback((targetUserId: string): boolean => {
+    const isMutualFollowFn = useCallback((targetUserId: string): boolean => {
+        if (!currentUserId) return false;
+
         const iFollow = follows.some(
             f => f.followerId === currentUserId && f.followingId === targetUserId
         );
@@ -353,17 +528,19 @@ export function FollowProvider({ children }: { children: ReactNode }) {
             value={{
                 currentUserId,
                 getUserProfile,
-                getFollowers,
-                getFollowing,
+                getFollowers: getFollowersFn,
+                getFollowing: getFollowingFn,
                 getFollowStatus,
-                follow,
-                unfollow,
+                follow: followFn,
+                unfollow: unfollowFn,
                 getFriends,
                 getFriendActivities,
                 getSuggestedUsers,
                 getFollowerCount,
                 getFollowingCount,
-                isMutualFollow,
+                isMutualFollow: isMutualFollowFn,
+                isFromSupabase,
+                isLoading,
             }}
         >
             {children}

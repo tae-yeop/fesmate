@@ -1,13 +1,12 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { Search, Grid3X3, List, Calendar, X, ChevronDown } from "lucide-react";
+import { Search, Grid3X3, List, Calendar, X, ChevronDown, Loader2, Database, HardDrive } from "lucide-react";
 import { EventCard } from "@/components/events/EventCard";
 import { EventListItem } from "@/components/events/EventListItem";
 import { EventCalendarView } from "@/components/events/EventCalendarView";
-import { MOCK_EVENTS } from "@/lib/mock-data";
+import { useEvents } from "@/lib/supabase/hooks";
 import { cn } from "@/lib/utils";
-import { Event } from "@/types/event";
 import { useWishlist } from "@/lib/wishlist-context";
 import { useAuth } from "@/lib/auth-context";
 import { useDevContext } from "@/lib/dev-context";
@@ -42,6 +41,9 @@ export default function ExplorePage() {
     const [activeFilter, setActiveFilter] = useState<keyof Filters | null>(null);
     const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
+    // Supabase에서 이벤트 데이터 가져오기 (오류 시 Mock 폴백)
+    const { events: allEvents, isLoading, isFromSupabase } = useEvents();
+
     // 찜/다녀옴 상태
     const { isWishlist, isAttended, toggleWishlist } = useWishlist();
 
@@ -71,7 +73,7 @@ export default function ExplorePage() {
 
     // 필터링 및 정렬된 이벤트
     const filteredEvents = useMemo(() => {
-        let events = [...MOCK_EVENTS];
+        let events = [...allEvents];
 
         // 검색
         if (searchQuery) {
@@ -79,7 +81,7 @@ export default function ExplorePage() {
             events = events.filter(
                 (e) =>
                     e.title.toLowerCase().includes(query) ||
-                    e.venue.name.toLowerCase().includes(query) ||
+                    e.venue?.name?.toLowerCase().includes(query) ||
                     e.artists?.some((a) => a.name.toLowerCase().includes(query))
             );
         }
@@ -87,8 +89,8 @@ export default function ExplorePage() {
         // 지역 필터
         if (filters.region) {
             events = events.filter((e) => {
-                const address = e.venue.address || "";
-                const name = e.venue.name || "";
+                const address = e.venue?.address || "";
+                const name = e.venue?.name || "";
                 return address.includes(filters.region!) || name.includes(filters.region!);
             });
         }
@@ -156,11 +158,16 @@ export default function ExplorePage() {
                 events.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
             }
         } else {
-            events.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            // 최신 등록순 - createdAt이 없으면 startAt 사용
+            events.sort((a, b) => {
+                const dateA = new Date(a.startAt).getTime();
+                const dateB = new Date(b.startAt).getTime();
+                return dateB - dateA;
+            });
         }
 
         return events;
-    }, [searchQuery, filters, sort]);
+    }, [searchQuery, filters, sort, allEvents]);
 
     // 활성 필터 개수
     const activeFilterCount = Object.values(filters).filter((v) => v !== null && v !== false).length;
@@ -351,9 +358,29 @@ export default function ExplorePage() {
                 {/* 정렬 (캘린더뷰가 아닐 때만) */}
                 {view !== "calendar" && (
                     <div className="flex items-center justify-between mb-4">
-                        <span className="text-sm text-muted-foreground">
-                            {filteredEvents.length}개의 행사
-                        </span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">
+                                {isLoading ? "로딩 중..." : `${filteredEvents.length}개의 행사`}
+                            </span>
+                            {/* 데이터 소스 표시 (Dev 확인용) */}
+                            {!isLoading && (
+                                <span
+                                    className={cn(
+                                        "inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded",
+                                        isFromSupabase
+                                            ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
+                                            : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300"
+                                    )}
+                                    title={isFromSupabase ? "Supabase에서 로드됨" : "Mock 데이터 사용 중"}
+                                >
+                                    {isFromSupabase ? (
+                                        <><Database className="h-3 w-3" /> DB</>
+                                    ) : (
+                                        <><HardDrive className="h-3 w-3" /> Mock</>
+                                    )}
+                                </span>
+                            )}
+                        </div>
                         <select
                             value={sort}
                             onChange={(e) => setSort(e.target.value as SortType)}
@@ -365,8 +392,16 @@ export default function ExplorePage() {
                     </div>
                 )}
 
+                {/* 로딩 상태 */}
+                {isLoading && (
+                    <div className="flex items-center justify-center py-12">
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                        <span className="ml-2 text-muted-foreground">행사 목록을 불러오는 중...</span>
+                    </div>
+                )}
+
                 {/* 뷰 렌더링 */}
-                {view === "card" && (
+                {!isLoading && view === "card" && (
                     <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
                         {filteredEvents.map((event) => (
                             <EventCard
@@ -381,7 +416,7 @@ export default function ExplorePage() {
                     </div>
                 )}
 
-                {view === "list" && (
+                {!isLoading && view === "list" && (
                     <div className="space-y-3">
                         {filteredEvents.map((event) => (
                             <EventListItem
@@ -396,12 +431,12 @@ export default function ExplorePage() {
                     </div>
                 )}
 
-                {view === "calendar" && (
+                {!isLoading && view === "calendar" && (
                     <EventCalendarView events={filteredEvents} />
                 )}
 
                 {/* 빈 상태 */}
-                {filteredEvents.length === 0 && (
+                {!isLoading && filteredEvents.length === 0 && (
                     <div className="text-center py-12">
                         <p className="text-muted-foreground mb-4">
                             검색 결과가 없습니다

@@ -6,12 +6,24 @@ import {
     useState,
     useEffect,
     useCallback,
+    useRef,
     ReactNode,
 } from "react";
 import { Notification, NotificationType } from "@/types/notification";
 import { MOCK_NOTIFICATIONS } from "@/lib/mock-data";
 import { useDevContext } from "./dev-context";
+import { useAuth } from "./auth-context";
 import { PARTICIPATION_LABELS } from "@/types/participation";
+import { createSharedAdapter, DOMAINS } from "./storage";
+import { isValidUUID } from "./utils";
+import {
+    getUserNotifications as getNotificationsFromDB,
+    markNotificationAsRead as markAsReadInDB,
+    markAllNotificationsAsRead as markAllAsReadInDB,
+    deleteNotification as deleteNotificationInDB,
+    getUnreadNotificationCount,
+    Notification as DbNotification,
+} from "./supabase/queries/notifications";
 
 // ===== Context =====
 
@@ -21,11 +33,11 @@ interface NotificationContextValue {
     /** 읽지 않은 알림 수 */
     unreadCount: number;
     /** 알림 읽음 처리 */
-    markAsRead: (id: string) => void;
+    markAsRead: (id: string) => Promise<void>;
     /** 모든 알림 읽음 처리 */
-    markAllAsRead: () => void;
+    markAllAsRead: () => Promise<void>;
     /** 알림 삭제 */
-    deleteNotification: (id: string) => void;
+    deleteNotification: (id: string) => Promise<void>;
     /** 알림 추가 (내부 사용) */
     addNotification: (notification: Omit<Notification, "id" | "createdAt" | "isRead">) => void;
     /** 참여 수락 알림 생성 */
@@ -50,69 +62,197 @@ interface NotificationContextValue {
         location?: string;
         reminderType: "1d" | "1h";
     }) => void;
+    /** 로딩 상태 */
+    loading: boolean;
 }
 
 const NotificationContext = createContext<NotificationContextValue | null>(null);
 
-const STORAGE_KEY_NOTIFICATIONS = "fesmate_notifications";
+// Storage adapter (전역 공유 데이터 - 비로그인 시 사용)
+const notificationsAdapter = createSharedAdapter<Notification[]>({
+    domain: DOMAINS.NOTIFICATIONS,
+    dateFields: ["createdAt"],
+});
+
+/**
+ * DB Notification을 Context Notification 타입으로 변환
+ */
+function transformDbNotification(dbNotification: DbNotification): Notification {
+    return {
+        id: dbNotification.id,
+        userId: dbNotification.userId,
+        type: dbNotification.type,
+        eventId: dbNotification.eventId,
+        postId: dbNotification.postId,
+        slotId: dbNotification.slotId,
+        title: dbNotification.title,
+        body: dbNotification.body,
+        imageUrl: dbNotification.imageUrl,
+        deepLink: dbNotification.deepLink,
+        isRead: dbNotification.isRead,
+        createdAt: dbNotification.createdAt,
+    };
+}
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
+    const { user } = useAuth();
     const { mockUserId } = useDevContext();
-    const currentUserId = mockUserId || "user1";
+    const currentUserId = user?.id || mockUserId || "user1";
 
     const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
     const [isInitialized, setIsInitialized] = useState(false);
+    const [loading, setLoading] = useState(false);
 
-    // localStorage에서 불러오기
+    // 첫 로드 여부 추적 (user 변경 시 localStorage 재로드 방지)
+    const hasLoadedFromStorageRef = useRef(false);
+    // 이전 user ID 추적 (실제 로그인/로그아웃 감지)
+    const prevUserIdRef = useRef<string | null>(null);
+
+    // 데이터 로드 (localStorage 기본 + 로그인 시 Supabase 병합)
     useEffect(() => {
-        const stored = localStorage.getItem(STORAGE_KEY_NOTIFICATIONS);
-        if (stored) {
-            try {
-                const parsed = JSON.parse(stored);
-                setNotifications(
-                    parsed.map((n: Notification) => ({
-                        ...n,
-                        createdAt: new Date(n.createdAt),
-                    }))
-                );
-            } catch {
-                console.error("Failed to parse notifications from localStorage");
-            }
-        }
-        setIsInitialized(true);
-    }, []);
+        const loadNotifications = async () => {
+            const currentUserId = user?.id ?? null;
+            const isUserChange = prevUserIdRef.current !== currentUserId;
+            prevUserIdRef.current = currentUserId;
 
-    // localStorage에 저장
+            // 이미 localStorage에서 로드했고, 같은 사용자라면 스킵
+            // (user가 undefined → 객체로 변경되는 초기 로드 시 재실행 방지)
+            if (hasLoadedFromStorageRef.current && !isUserChange) {
+                console.log("[NotificationContext] Skipping reload - already loaded");
+                return;
+            }
+
+            setLoading(true);
+            try {
+                let localNotifications: Notification[];
+
+                // localStorage에서 처음 로드하거나, 사용자가 변경된 경우
+                if (!hasLoadedFromStorageRef.current) {
+                    const stored = notificationsAdapter.get();
+                    console.log("[NotificationContext] First load from storage:", stored?.length ?? 0, "items");
+                    localNotifications = stored || MOCK_NOTIFICATIONS;
+                    hasLoadedFromStorageRef.current = true;
+                } else {
+                    // 사용자 변경 시에는 현재 상태를 기반으로 (localStorage 데이터 유지)
+                    console.log("[NotificationContext] User changed, keeping current notifications");
+                    localNotifications = notifications;
+                }
+
+                if (user) {
+                    // 로그인 시 Supabase에서도 로드하여 병합
+                    try {
+                        const dbNotifications = await getNotificationsFromDB(user.id, { limit: 100 });
+                        const dbMapped = dbNotifications.map(transformDbNotification);
+                        // DB 데이터가 있으면 병합, 없으면 로컬만 사용
+                        if (dbMapped.length > 0) {
+                            // DB 알림과 로컬 알림 병합 (ID 기준 중복 제거)
+                            const dbIds = new Set(dbMapped.map(n => n.id));
+                            const uniqueLocal = localNotifications.filter(n => !dbIds.has(n.id));
+                            localNotifications = [...dbMapped, ...uniqueLocal];
+                        }
+                    } catch (dbError) {
+                        console.warn("[NotificationContext] Supabase load failed, using local only:", dbError);
+                    }
+                }
+
+                setNotifications(localNotifications);
+            } catch (error) {
+                console.error("[NotificationContext] Load failed:", error);
+            } finally {
+                setIsInitialized(true);
+                setLoading(false);
+            }
+        };
+
+        loadNotifications();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user]);
+
+    // Storage에 항상 저장 (Mock 데이터 유지용)
     useEffect(() => {
         if (isInitialized) {
-            localStorage.setItem(STORAGE_KEY_NOTIFICATIONS, JSON.stringify(notifications));
+            console.log("[NotificationContext] Saving to storage:", notifications.length, "items, unread:", notifications.filter(n => !n.isRead).length);
+            notificationsAdapter.set(notifications);
         }
     }, [notifications, isInitialized]);
 
     // 현재 사용자의 알림만 필터링
-    const userNotifications = notifications.filter(n => n.userId === currentUserId);
+    // 로그아웃 상태 (user도 없고 mockUserId도 없으면)에서는 빈 배열 반환
+    const isLoggedOut = !user && !mockUserId;
+    const userNotifications = isLoggedOut
+        ? []
+        : notifications.filter(n => n.userId === currentUserId);
     const unreadCount = userNotifications.filter(n => !n.isRead).length;
 
     // 알림 읽음 처리
-    const markAsRead = useCallback((id: string) => {
+    const markAsRead = useCallback(async (id: string) => {
+        // Optimistic update
         setNotifications(prev =>
             prev.map(n => n.id === id ? { ...n, isRead: true } : n)
         );
-    }, []);
+
+        // 로그인 + 유효한 UUID인 경우에만 Supabase에 저장
+        if (user && isValidUUID(id)) {
+            try {
+                await markAsReadInDB(id);
+            } catch (error) {
+                console.error("[NotificationContext] Mark as read failed:", error);
+                // 롤백
+                setNotifications(prev =>
+                    prev.map(n => n.id === id ? { ...n, isRead: false } : n)
+                );
+            }
+        }
+    }, [user]);
 
     // 모든 알림 읽음 처리
-    const markAllAsRead = useCallback(() => {
+    const markAllAsRead = useCallback(async () => {
+        const targetIds = notifications
+            .filter(n => n.userId === currentUserId && !n.isRead)
+            .map(n => n.id);
+
+        // Optimistic update
         setNotifications(prev =>
             prev.map(n => n.userId === currentUserId ? { ...n, isRead: true } : n)
         );
-    }, [currentUserId]);
+
+        if (user) {
+            try {
+                await markAllAsReadInDB(user.id);
+            } catch (error) {
+                console.error("[NotificationContext] Mark all as read failed:", error);
+                // 롤백
+                setNotifications(prev =>
+                    prev.map(n =>
+                        targetIds.includes(n.id) ? { ...n, isRead: false } : n
+                    )
+                );
+            }
+        }
+    }, [currentUserId, notifications, user]);
 
     // 알림 삭제
-    const deleteNotification = useCallback((id: string) => {
-        setNotifications(prev => prev.filter(n => n.id !== id));
-    }, []);
+    const deleteNotification = useCallback(async (id: string) => {
+        const deletedNotification = notifications.find(n => n.id === id);
 
-    // 알림 추가
+        // Optimistic update
+        setNotifications(prev => prev.filter(n => n.id !== id));
+
+        // 로그인 + 유효한 UUID인 경우에만 Supabase에 저장
+        if (user && isValidUUID(id)) {
+            try {
+                await deleteNotificationInDB(id);
+            } catch (error) {
+                console.error("[NotificationContext] Delete failed:", error);
+                // 롤백
+                if (deletedNotification) {
+                    setNotifications(prev => [...prev, deletedNotification]);
+                }
+            }
+        }
+    }, [notifications, user]);
+
+    // 알림 추가 (로컬에서만 - Supabase는 서버 트리거로 생성)
     const addNotification = useCallback(
         (notification: Omit<Notification, "id" | "createdAt" | "isRead">) => {
             const newNotification: Notification = {
@@ -220,6 +360,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                 notifyParticipationAccepted,
                 notifyParticipationDeclined,
                 notifyParticipationReminder,
+                loading,
             }}
         >
             {children}

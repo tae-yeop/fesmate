@@ -20,6 +20,7 @@ import { LeaderboardProvider } from "@/lib/leaderboard-context";
 import { JoinProvider } from "@/lib/join-context";
 import { CompanionProvider } from "@/lib/companion-context";
 import { ParticipationProvider } from "@/lib/participation-context";
+import { PostProvider } from "@/lib/post-context";
 import { NotificationProvider } from "@/lib/notification-context";
 import { CallGuideProvider } from "@/lib/call-guide-context";
 import { TicketBookProvider } from "@/lib/ticketbook-context";
@@ -65,6 +66,7 @@ export default function RootLayout({
                       <JoinProvider>
                       <CompanionProvider>
                       <ParticipationProvider>
+                      <PostProvider>
                       <NotificationProvider>
                       <CallGuideProvider>
                       <TicketBookProvider>
@@ -79,6 +81,7 @@ export default function RootLayout({
                       </TicketBookProvider>
                       </CallGuideProvider>
                       </NotificationProvider>
+                      </PostProvider>
                       </ParticipationProvider>
                       </CompanionProvider>
                       </JoinProvider>

@@ -35,6 +35,10 @@ interface CallGuideViewerProps {
     onEdit?: () => void;
     onHelpful?: () => void;
     isHelpful?: boolean;
+    // 개별 엔트리 도움됨
+    onEntryHelpful?: (entryId: string) => void;
+    isEntryHelpful?: (entryId: string) => boolean;
+    getEntryHelpfulCount?: (entryId: string, originalCount: number) => number;
     className?: string;
 }
 
@@ -43,6 +47,9 @@ export function CallGuideViewer({
     onEdit,
     onHelpful,
     isHelpful = false,
+    onEntryHelpful,
+    isEntryHelpful,
+    getEntryHelpfulCount,
     className,
 }: CallGuideViewerProps) {
     const [player, setPlayer] = useState<YTPlayer | null>(null);
@@ -602,6 +609,29 @@ export function CallGuideViewer({
                                             <div className="text-xs text-teal-600 mt-1">{entry.instruction}</div>
                                         )}
                                     </div>
+
+                                    {/* 개별 엔트리 도움됨 버튼 */}
+                                    {onEntryHelpful && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onEntryHelpful(entry.id);
+                                            }}
+                                            className={cn(
+                                                "flex items-center gap-1 px-2 py-1 rounded text-xs shrink-0 transition-colors",
+                                                isEntryHelpful?.(entry.id)
+                                                    ? "text-purple-600 bg-purple-50"
+                                                    : "text-gray-400 hover:text-purple-600 hover:bg-purple-50"
+                                            )}
+                                        >
+                                            <ThumbsUp className={cn("h-3 w-3", isEntryHelpful?.(entry.id) && "fill-current")} />
+                                            <span>
+                                                {getEntryHelpfulCount
+                                                    ? getEntryHelpfulCount(entry.id, entry.helpfulCount || 0)
+                                                    : entry.helpfulCount || 0}
+                                            </span>
+                                        </button>
+                                    )}
                                 </div>
                             );
                         })}

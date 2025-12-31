@@ -12,8 +12,10 @@ import {
     ChevronLeft,
     Plus,
     Check,
+    Loader2,
 } from "lucide-react";
-import { MOCK_EVENTS, getPostsByEventId, getSlotsByEventId } from "@/lib/mock-data";
+import { getPostsByEventId, getSlotsByEventId } from "@/lib/mock-data";
+import { useEvent } from "@/lib/supabase/hooks";
 import { cn } from "@/lib/utils";
 import { getHubMode, HubMode } from "@/types/event";
 import { PostComposer } from "@/components/posts/PostComposer";
@@ -39,7 +41,9 @@ export default function EventDetailPage({ params }: PageProps) {
     const { id } = use(params);
     const searchParams = useSearchParams();
     const router = useRouter();
-    const event = MOCK_EVENTS.find((e) => e.id === id);
+
+    // Supabase에서 이벤트 데이터 가져오기 (오류 시 Mock 폴백)
+    const { event, isLoading, isFromSupabase } = useEvent(id);
 
     // URL의 tab 쿼리 파라미터로 초기 탭 결정
     const initialTab = (searchParams.get("tab") as TabType) || "overview";
@@ -120,7 +124,7 @@ export default function EventDetailPage({ params }: PageProps) {
     const handleShare = useCallback(async () => {
         const shareData = {
             title: event?.title || "FesMate",
-            text: `${event?.title} - ${event?.venue.name}`,
+            text: `${event?.title} - ${event?.venue?.name}`,
             url: window.location.href,
         };
 
@@ -144,6 +148,18 @@ export default function EventDetailPage({ params }: PageProps) {
             }
         }
     }, [event]);
+
+    // 로딩 중 표시
+    if (isLoading) {
+        return (
+            <div className="min-h-screen bg-background flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <p className="text-muted-foreground">행사 정보를 불러오는 중...</p>
+                </div>
+            </div>
+        );
+    }
 
     if (!event) {
         notFound();
@@ -237,7 +253,7 @@ export default function EventDetailPage({ params }: PageProps) {
                             </div>
                             <div className="flex items-center gap-1">
                                 <MapPin className="h-4 w-4" />
-                                <span>{event.venue.name}</span>
+                                <span>{event.venue?.name}</span>
                             </div>
                         </div>
                     </div>

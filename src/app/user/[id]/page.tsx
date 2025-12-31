@@ -675,12 +675,12 @@ function UserListItem({
     unfollow,
 }: {
     user: { id: string; nickname: string; avatar?: string; bio?: string };
-    currentUserId: string;
+    currentUserId: string | null;
     getFollowStatus: (userId: string) => "none" | "following" | "follower" | "mutual";
     follow: (userId: string) => void;
     unfollow: (userId: string) => void;
 }) {
-    const isMe = user.id === currentUserId;
+    const isMe = currentUserId ? user.id === currentUserId : false;
     const status = getFollowStatus(user.id);
 
     const handleToggle = (e: React.MouseEvent) => {

@@ -175,7 +175,7 @@ export default function CompanionRequestModal({
                         </div>
                         <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                             {formatDate(event.startAt)}
-                            {event.venue && ` · ${event.venue.name}`}
+                            {event.venue && ` · ${event.venue?.name}`}
                         </div>
                     </div>
 

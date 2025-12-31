@@ -19,6 +19,12 @@ import {
 } from "lucide-react";
 import { ViewMode } from "./TicketViewToggle";
 import { needsRotation, getImageOrientation } from "./useTicketView";
+import { createDeviceAdapter, DOMAINS } from "@/lib/storage";
+
+// Storage adapter (동일한 키를 useTicketView.ts와 공유 - 기기별 설정)
+const viewModeAdapter = createDeviceAdapter<ViewMode>({
+  domain: DOMAINS.TICKETBOOK_VIEW,
+});
 
 interface TicketViewerProps {
   tickets: Ticket[];
@@ -53,11 +59,11 @@ export function TicketViewer({
     setIsFlipped(false);
   }, [initialIndex]);
 
-  // localStorage에서 뷰 모드 로드
+  // Storage에서 뷰 모드 로드
   useEffect(() => {
-    const saved = localStorage.getItem("fesmate_ticketbook_view");
+    const saved = viewModeAdapter.get();
     if (saved && ["portrait", "landscape"].includes(saved)) {
-      setViewMode(saved as ViewMode);
+      setViewMode(saved);
     }
   }, []);
 
@@ -93,7 +99,7 @@ export function TicketViewer({
   const toggleViewMode = useCallback(() => {
     const newMode = viewMode === "portrait" ? "landscape" : "portrait";
     setViewMode(newMode);
-    localStorage.setItem("fesmate_ticketbook_view", newMode);
+    viewModeAdapter.set(newMode);
   }, [viewMode]);
 
   // 현재 뷰가 가로 모드인지

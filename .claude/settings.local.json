@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run build:*)",
+      "Bash(while read hash msg)",
+      "Bash(do)",
+      "Bash(if git show -s --format=%B $hash)",
+      "Bash(then)",
+      "Bash(echo:*)",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(xargs -I {} sh -c \"git show -s --format=''%B'' {} | grep -q ''Co-Authored-By'' && echo {}\")",
+      "Bash(git show:*)",
+      "Bash(xargs -I{} sh -c 'git show -s --format=%B {} | grep -q \"\"Co-Authored-By\"\" && echo {}')",
+      "Bash(git filter-branch:*)",
+      "Bash(git stash:*)",
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch:*)",
+      "Bash(git push:*)",
+      "Bash(timeout 5 curl:*)",
+      "Bash(npm install:*)",
+      "Bash(grep:*)",
+      "Bash(taskkill:*)",
+      "Bash(Remove-Item -Force \"C:\\\\workspace\\\\fesmate\\\\.next\\\\dev\\\\lock\")",
+      "Bash(Remove-Item -Recurse -Force \"C:\\\\workspace\\\\fesmate\\\\.next\")",
+      "Bash(npx supabase db push:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}

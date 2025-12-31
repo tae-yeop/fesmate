@@ -10,7 +10,9 @@ import {
     ReactNode,
 } from "react";
 import { useDevContext } from "@/lib/dev-context";
+import { useAuth } from "@/lib/auth-context";
 import { MOCK_USERS } from "@/lib/mock-data";
+import { isValidUUID } from "@/lib/utils";
 import {
     Crew,
     CrewMember,
@@ -20,7 +22,45 @@ import {
     CrewAnnouncement,
     CreateCrewInput,
     CrewStats,
+    CrewRegion,
+    CrewGenre,
 } from "@/types/crew";
+import { createSharedAdapter, DOMAINS } from "./storage";
+import {
+    // Crew CRUD
+    getPublicCrews as getPublicCrewsFromDb,
+    getCrewById as getCrewByIdFromDb,
+    getUserCrews as getUserCrewsFromDb,
+    createCrew as createCrewInDb,
+    // Crew Members
+    getCrewMembers as getCrewMembersFromDb,
+    isCrewMember as isCrewMemberInDb,
+    isCrewLeader as isCrewLeaderInDb,
+    joinCrew as joinCrewInDb,
+    leaveCrew as leaveCrewInDb,
+    kickMember as kickMemberInDb,
+    // Join Requests
+    getJoinRequests as getJoinRequestsFromDb,
+    getPendingRequestCount as getPendingRequestCountFromDb,
+    hasJoinRequest as hasJoinRequestInDb,
+    requestJoinCrew as requestJoinCrewInDb,
+    approveJoinRequest as approveJoinRequestInDb,
+    rejectJoinRequest as rejectJoinRequestInDb,
+    // Announcements
+    getCrewAnnouncements as getCrewAnnouncementsFromDb,
+    createAnnouncement as createAnnouncementInDb,
+    deleteAnnouncement as deleteAnnouncementInDb,
+    toggleAnnouncementPin as toggleAnnouncementPinInDb,
+    // Crew Events
+    getCrewEvents as getCrewEventsFromDb,
+    addCrewEvent as addCrewEventInDb,
+    // Types
+    type Crew as DbCrew,
+    type CrewMember as DbCrewMember,
+    type CrewJoinRequest as DbCrewJoinRequest,
+    type CrewAnnouncement as DbCrewAnnouncement,
+    type CrewEvent as DbCrewEvent,
+} from "./supabase/queries";
 
 /** 크루 행사 (출처 정보 포함) */
 export interface CrewEventWithSource {
@@ -306,16 +346,40 @@ interface CrewContextValue {
     deleteAnnouncement: (announcementId: string) => void;
     /** 공지 고정/해제 (크루장용) */
     toggleAnnouncementPin: (announcementId: string) => void;
+
+    /** 데이터 소스 표시 */
+    isFromSupabase: boolean;
+    /** 로딩 상태 */
+    isLoading: boolean;
 }
 
 const CrewContext = createContext<CrewContextValue | null>(null);
 
-const STORAGE_KEY_CREWS = "fesmate_crews";
-const STORAGE_KEY_MEMBERS = "fesmate_crew_members";
-const STORAGE_KEY_ACTIVITIES = "fesmate_crew_activities";
-const STORAGE_KEY_CREW_EVENTS = "fesmate_crew_events";
-const STORAGE_KEY_JOIN_REQUESTS = "fesmate_crew_join_requests";
-const STORAGE_KEY_ANNOUNCEMENTS = "fesmate_crew_announcements";
+// Storage adapters (전역 공유 데이터) - Dev 모드용
+const crewsAdapter = createSharedAdapter<Crew[]>({
+    domain: DOMAINS.CREWS,
+    dateFields: ["createdAt"],
+});
+const membersAdapter = createSharedAdapter<CrewMember[]>({
+    domain: DOMAINS.CREW_MEMBERS,
+    dateFields: ["joinedAt"],
+});
+const activitiesAdapter = createSharedAdapter<CrewActivity[]>({
+    domain: DOMAINS.CREW_ACTIVITIES,
+    dateFields: ["createdAt"],
+});
+const crewEventsAdapter = createSharedAdapter<CrewEvent[]>({
+    domain: DOMAINS.CREW_EVENTS,
+    dateFields: ["addedAt"],
+});
+const joinRequestsAdapter = createSharedAdapter<CrewJoinRequest[]>({
+    domain: DOMAINS.CREW_JOIN_REQUESTS,
+    dateFields: ["requestedAt", "processedAt"],
+});
+const announcementsAdapter = createSharedAdapter<CrewAnnouncement[]>({
+    domain: DOMAINS.CREW_ANNOUNCEMENTS,
+    dateFields: ["createdAt", "updatedAt"],
+});
 
 // 사용자 닉네임 조회 헬퍼
 const getUserNickname = (userId: string): string => {
@@ -323,10 +387,61 @@ const getUserNickname = (userId: string): string => {
     return user?.nickname || "익명";
 };
 
+// DB 타입을 Frontend 타입으로 변환하는 헬퍼
+function transformDbCrewToFrontend(dbCrew: DbCrew): Crew {
+    return {
+        id: dbCrew.id,
+        name: dbCrew.name,
+        description: dbCrew.description || "",
+        region: dbCrew.region as CrewRegion,
+        genre: dbCrew.genre as CrewGenre,
+        isPublic: dbCrew.isPublic,
+        joinType: dbCrew.joinType,
+        maxMembers: dbCrew.maxMembers,
+        logoEmoji: dbCrew.logoEmoji || undefined,
+        logoUrl: dbCrew.logoUrl || undefined,
+        bannerUrl: dbCrew.bannerUrl || undefined,
+        createdBy: dbCrew.createdBy,
+        createdAt: dbCrew.createdAt,
+    };
+}
+
+function transformDbMemberToFrontend(dbMember: DbCrewMember, nickname?: string): CrewMember {
+    return {
+        crewId: dbMember.crewId,
+        userId: dbMember.userId,
+        userNickname: nickname || "사용자",
+        role: dbMember.role,
+        joinedAt: dbMember.joinedAt,
+    };
+}
+
+function transformDbAnnouncementToFrontend(dbAnn: DbCrewAnnouncement, nickname?: string): CrewAnnouncement {
+    return {
+        id: dbAnn.id,
+        crewId: dbAnn.crewId,
+        authorId: dbAnn.authorId,
+        authorNickname: nickname || "관리자",
+        content: dbAnn.content,
+        isPinned: dbAnn.isPinned,
+        createdAt: dbAnn.createdAt,
+        updatedAt: dbAnn.updatedAt,
+    };
+}
+
 export function CrewProvider({ children }: { children: ReactNode }) {
-    // 현재 로그인된 사용자 (Dev 모드에서 전환 가능)
-    const { mockUserId } = useDevContext();
-    const currentUserId = mockUserId || "user1"; // Dev 모드의 mockUserId 사용
+    const { mockUserId, isLoggedIn: isDevLoggedIn } = useDevContext();
+    const { user: authUser } = useAuth();
+
+    // 실제 인증 사용자가 있으면 Supabase 사용, 없으면 Dev 모드
+    const realUserId = authUser?.id;
+    const isRealUser = !!realUserId && isValidUUID(realUserId);
+
+    // Dev 모드에서 mockUserId 사용
+    const devUserId = isDevLoggedIn ? (mockUserId || "user1") : "user1";
+
+    // 최종 사용자 ID (실제 > Dev)
+    const currentUserId = realUserId || devUserId;
     const currentUserNickname = getUserNickname(currentUserId);
 
     const [crews, setCrews] = useState<Crew[]>(MOCK_CREWS);
@@ -335,105 +450,87 @@ export function CrewProvider({ children }: { children: ReactNode }) {
     const [crewEvents, setCrewEvents] = useState<CrewEvent[]>(MOCK_CREW_EVENTS);
     const [joinRequests, setJoinRequests] = useState<CrewJoinRequest[]>(MOCK_JOIN_REQUESTS);
     const [announcements, setAnnouncements] = useState<CrewAnnouncement[]>(MOCK_ANNOUNCEMENTS);
-    const [isInitialized, setIsInitialized] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isFromSupabase, setIsFromSupabase] = useState(false);
+    const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
 
-    // localStorage에서 불러오기
+    // 사용자 변경 또는 초기 로드 시 데이터 로드
     useEffect(() => {
-        const storedCrews = localStorage.getItem(STORAGE_KEY_CREWS);
-        const storedMembers = localStorage.getItem(STORAGE_KEY_MEMBERS);
-        const storedActivities = localStorage.getItem(STORAGE_KEY_ACTIVITIES);
-        const storedCrewEvents = localStorage.getItem(STORAGE_KEY_CREW_EVENTS);
+        if (loadedUserId === currentUserId) return;
 
-        if (storedCrews) {
-            try {
-                const parsed = JSON.parse(storedCrews);
-                setCrews(parsed.map((c: Crew) => ({
-                    ...c,
-                    createdAt: new Date(c.createdAt),
-                })));
-            } catch {
-                console.error("Failed to parse crews from localStorage");
-            }
+        // 실제 사용자: Supabase에서 로드
+        if (isRealUser && realUserId) {
+            setIsLoading(true);
+            Promise.all([
+                getPublicCrewsFromDb(),
+                getUserCrewsFromDb(realUserId),
+            ])
+                .then(async ([publicCrews, userCrews]) => {
+                    // 중복 제거하여 병합
+                    const allCrewsMap = new Map<string, Crew>();
+                    [...publicCrews, ...userCrews].forEach(c => {
+                        allCrewsMap.set(c.id, transformDbCrewToFrontend(c));
+                    });
+                    setCrews(Array.from(allCrewsMap.values()));
+
+                    // 사용자가 속한 크루의 멤버 목록 로드
+                    const memberPromises = userCrews.map(c => getCrewMembersFromDb(c.id));
+                    const memberResults = await Promise.all(memberPromises);
+                    const allMembers = memberResults.flat().map(m => transformDbMemberToFrontend(m));
+                    setMembers(allMembers);
+
+                    setIsFromSupabase(true);
+                })
+                .catch((error) => {
+                    console.error("[CrewContext] Supabase load failed:", error);
+                    // 폴백: localStorage에서 로드
+                    loadFromLocalStorage();
+                    setIsFromSupabase(false);
+                })
+                .finally(() => {
+                    setIsLoading(false);
+                    setLoadedUserId(currentUserId);
+                });
+            return;
         }
 
-        if (storedMembers) {
-            try {
-                const parsed = JSON.parse(storedMembers);
-                setMembers(parsed.map((m: CrewMember) => ({
-                    ...m,
-                    joinedAt: new Date(m.joinedAt),
-                })));
-            } catch {
-                console.error("Failed to parse crew members from localStorage");
-            }
-        }
+        // Dev 모드: localStorage에서 로드
+        loadFromLocalStorage();
+        setLoadedUserId(currentUserId);
+        setIsFromSupabase(false);
+    }, [currentUserId, loadedUserId, isRealUser, realUserId]);
 
-        if (storedActivities) {
-            try {
-                const parsed = JSON.parse(storedActivities);
-                setActivities(parsed.map((a: CrewActivity) => ({
-                    ...a,
-                    createdAt: new Date(a.createdAt),
-                })));
-            } catch {
-                console.error("Failed to parse crew activities from localStorage");
-            }
-        }
+    // localStorage에서 데이터 로드 (Dev 모드용)
+    const loadFromLocalStorage = () => {
+        const storedCrews = crewsAdapter.get();
+        if (storedCrews) setCrews(storedCrews);
 
-        if (storedCrewEvents) {
-            try {
-                const parsed = JSON.parse(storedCrewEvents);
-                setCrewEvents(parsed.map((e: CrewEvent) => ({
-                    ...e,
-                    addedAt: new Date(e.addedAt),
-                })));
-            } catch {
-                console.error("Failed to parse crew events from localStorage");
-            }
-        }
+        const storedMembers = membersAdapter.get();
+        if (storedMembers) setMembers(storedMembers);
 
-        const storedJoinRequests = localStorage.getItem(STORAGE_KEY_JOIN_REQUESTS);
-        if (storedJoinRequests) {
-            try {
-                const parsed = JSON.parse(storedJoinRequests);
-                setJoinRequests(parsed.map((r: CrewJoinRequest) => ({
-                    ...r,
-                    requestedAt: new Date(r.requestedAt),
-                    processedAt: r.processedAt ? new Date(r.processedAt) : undefined,
-                })));
-            } catch {
-                console.error("Failed to parse join requests from localStorage");
-            }
-        }
+        const storedActivities = activitiesAdapter.get();
+        if (storedActivities) setActivities(storedActivities);
 
-        const storedAnnouncements = localStorage.getItem(STORAGE_KEY_ANNOUNCEMENTS);
-        if (storedAnnouncements) {
-            try {
-                const parsed = JSON.parse(storedAnnouncements);
-                setAnnouncements(parsed.map((a: CrewAnnouncement) => ({
-                    ...a,
-                    createdAt: new Date(a.createdAt),
-                    updatedAt: a.updatedAt ? new Date(a.updatedAt) : undefined,
-                })));
-            } catch {
-                console.error("Failed to parse announcements from localStorage");
-            }
-        }
+        const storedCrewEvents = crewEventsAdapter.get();
+        if (storedCrewEvents) setCrewEvents(storedCrewEvents);
 
-        setIsInitialized(true);
-    }, []);
+        const storedJoinRequests = joinRequestsAdapter.get();
+        if (storedJoinRequests) setJoinRequests(storedJoinRequests);
 
-    // localStorage에 저장
+        const storedAnnouncements = announcementsAdapter.get();
+        if (storedAnnouncements) setAnnouncements(storedAnnouncements);
+    };
+
+    // localStorage에 저장 (Dev 모드만)
     useEffect(() => {
-        if (isInitialized) {
-            localStorage.setItem(STORAGE_KEY_CREWS, JSON.stringify(crews));
-            localStorage.setItem(STORAGE_KEY_MEMBERS, JSON.stringify(members));
-            localStorage.setItem(STORAGE_KEY_ACTIVITIES, JSON.stringify(activities));
-            localStorage.setItem(STORAGE_KEY_CREW_EVENTS, JSON.stringify(crewEvents));
-            localStorage.setItem(STORAGE_KEY_JOIN_REQUESTS, JSON.stringify(joinRequests));
-            localStorage.setItem(STORAGE_KEY_ANNOUNCEMENTS, JSON.stringify(announcements));
-        }
-    }, [crews, members, activities, crewEvents, joinRequests, announcements, isInitialized]);
+        if (isRealUser || loadedUserId !== currentUserId) return;
+        crewsAdapter.set(crews);
+        membersAdapter.set(members);
+        activitiesAdapter.set(activities);
+        crewEventsAdapter.set(crewEvents);
+        joinRequestsAdapter.set(joinRequests);
+        announcementsAdapter.set(announcements);
+    }, [crews, members, activities, crewEvents, joinRequests, announcements, isRealUser, loadedUserId, currentUserId]);
 
     // 공개 크루 목록
     const allCrews = useMemo(() => {
@@ -454,7 +551,7 @@ export function CrewProvider({ children }: { children: ReactNode }) {
     }, [crews]);
 
     // 크루 멤버 조회
-    const getCrewMembers = useCallback((crewId: string) => {
+    const getCrewMembersFn = useCallback((crewId: string) => {
         return members.filter(m => m.crewId === crewId);
     }, [members]);
 
@@ -480,7 +577,7 @@ export function CrewProvider({ children }: { children: ReactNode }) {
     }, [members, activities]);
 
     // 크루 행사 조회 (명시적 등록 + 멤버 다녀옴 자동 연동)
-    const getCrewEvents = useCallback((crewId: string): CrewEventWithSource[] => {
+    const getCrewEventsFn = useCallback((crewId: string): CrewEventWithSource[] => {
         const result: CrewEventWithSource[] = [];
         const seenEventIds = new Set<string>();
 
@@ -538,7 +635,7 @@ export function CrewProvider({ children }: { children: ReactNode }) {
     }, [crewEvents, activities, members]);
 
     // 크루에 행사 추가
-    const addCrewEvent = useCallback((crewId: string, eventId: string) => {
+    const addCrewEventFn = useCallback((crewId: string, eventId: string) => {
         // 이미 등록된 행사인지 확인
         const exists = crewEvents.some(e => e.crewId === crewId && e.eventId === eventId);
         if (exists) return;
@@ -549,11 +646,60 @@ export function CrewProvider({ children }: { children: ReactNode }) {
             addedBy: currentUserId,
             addedAt: new Date(),
         };
+
+        // Optimistic update
         setCrewEvents(prev => [...prev, newEvent]);
-    }, [crewEvents, currentUserId]);
+
+        // 실제 사용자: Supabase에 저장
+        if (isRealUser && realUserId && isValidUUID(crewId) && isValidUUID(eventId)) {
+            addCrewEventInDb(crewId, eventId, realUserId).catch((error) => {
+                console.error("[CrewContext] addCrewEvent failed:", error);
+                // 롤백
+                setCrewEvents(prev => prev.filter(e => !(e.crewId === crewId && e.eventId === eventId)));
+            });
+        }
+    }, [crewEvents, currentUserId, isRealUser, realUserId]);
 
     // 크루 생성
-    const createCrew = useCallback((input: CreateCrewInput): Crew => {
+    const createCrewFn = useCallback((input: CreateCrewInput): Crew => {
+        // 실제 사용자: Supabase에 생성 (비동기, 임시 ID 반환)
+        if (isRealUser && realUserId) {
+            const tempId = `crew_temp_${Date.now()}`;
+            const tempCrew: Crew = {
+                id: tempId,
+                ...input,
+                createdBy: currentUserId,
+                createdAt: new Date(),
+            };
+
+            // Optimistic update
+            setCrews(prev => [...prev, tempCrew]);
+
+            createCrewInDb(realUserId, input)
+                .then((dbCrew) => {
+                    // 실제 크루로 교체
+                    setCrews(prev => prev.map(c =>
+                        c.id === tempId ? transformDbCrewToFrontend(dbCrew) : c
+                    ));
+                    // 멤버 추가 (리더)
+                    setMembers(prev => [...prev, {
+                        crewId: dbCrew.id,
+                        userId: realUserId,
+                        userNickname: currentUserNickname,
+                        role: "leader",
+                        joinedAt: new Date(),
+                    }]);
+                })
+                .catch((error) => {
+                    console.error("[CrewContext] createCrew failed:", error);
+                    // 롤백
+                    setCrews(prev => prev.filter(c => c.id !== tempId));
+                });
+
+            return tempCrew;
+        }
+
+        // Dev 모드: localStorage에 저장
         const newCrew: Crew = {
             id: `crew_${Date.now()}`,
             ...input,
@@ -585,10 +731,10 @@ export function CrewProvider({ children }: { children: ReactNode }) {
         setActivities(prev => [...prev, activity]);
 
         return newCrew;
-    }, [currentUserId, currentUserNickname]);
+    }, [currentUserId, currentUserNickname, isRealUser, realUserId]);
 
     // 크루 가입
-    const joinCrew = useCallback((crewId: string) => {
+    const joinCrewFn = useCallback((crewId: string) => {
         const crew = crews.find(c => c.id === crewId);
         if (!crew) return;
 
@@ -610,43 +756,70 @@ export function CrewProvider({ children }: { children: ReactNode }) {
             role: "member",
             joinedAt: new Date(),
         };
+
+        // Optimistic update
         setMembers(prev => [...prev, newMember]);
 
-        // 활동 기록
-        const activity: CrewActivity = {
-            id: `act_${Date.now()}`,
-            crewId,
-            userId: currentUserId,
-            userNickname: currentUserNickname,
-            type: "join",
-            createdAt: new Date(),
-        };
-        setActivities(prev => [...prev, activity]);
-    }, [crews, members, currentUserId, currentUserNickname]);
+        // 실제 사용자: Supabase에 저장
+        if (isRealUser && realUserId && isValidUUID(crewId)) {
+            joinCrewInDb(crewId, realUserId).catch((error) => {
+                console.error("[CrewContext] joinCrew failed:", error);
+                // 롤백
+                setMembers(prev => prev.filter(
+                    m => !(m.crewId === crewId && m.userId === currentUserId)
+                ));
+            });
+        }
+
+        // 활동 기록 (Dev 모드만)
+        if (!isRealUser) {
+            const activity: CrewActivity = {
+                id: `act_${Date.now()}`,
+                crewId,
+                userId: currentUserId,
+                userNickname: currentUserNickname,
+                type: "join",
+                createdAt: new Date(),
+            };
+            setActivities(prev => [...prev, activity]);
+        }
+    }, [crews, members, currentUserId, currentUserNickname, isRealUser, realUserId]);
 
     // 크루 탈퇴
-    const leaveCrew = useCallback((crewId: string) => {
+    const leaveCrewFn = useCallback((crewId: string) => {
         // 리더는 탈퇴 불가 (해체만 가능)
         const memberInfo = members.find(
             m => m.crewId === crewId && m.userId === currentUserId
         );
         if (!memberInfo || memberInfo.role === "leader") return;
 
+        // Optimistic update
         setMembers(prev => prev.filter(
             m => !(m.crewId === crewId && m.userId === currentUserId)
         ));
 
-        // 활동 기록
-        const activity: CrewActivity = {
-            id: `act_${Date.now()}`,
-            crewId,
-            userId: currentUserId,
-            userNickname: currentUserNickname,
-            type: "leave",
-            createdAt: new Date(),
-        };
-        setActivities(prev => [...prev, activity]);
-    }, [members, currentUserId, currentUserNickname]);
+        // 실제 사용자: Supabase에서 삭제
+        if (isRealUser && realUserId && isValidUUID(crewId)) {
+            leaveCrewInDb(crewId, realUserId).catch((error) => {
+                console.error("[CrewContext] leaveCrew failed:", error);
+                // 롤백
+                setMembers(prev => [...prev, memberInfo]);
+            });
+        }
+
+        // 활동 기록 (Dev 모드만)
+        if (!isRealUser) {
+            const activity: CrewActivity = {
+                id: `act_${Date.now()}`,
+                crewId,
+                userId: currentUserId,
+                userNickname: currentUserNickname,
+                type: "leave",
+                createdAt: new Date(),
+            };
+            setActivities(prev => [...prev, activity]);
+        }
+    }, [members, currentUserId, currentUserNickname, isRealUser, realUserId]);
 
     // 멤버 여부 확인
     const isMember = useCallback((crewId: string) => {
@@ -663,7 +836,7 @@ export function CrewProvider({ children }: { children: ReactNode }) {
     // ===== 가입 신청 관련 =====
 
     // 가입 신청 (approval 타입)
-    const requestJoinCrew = useCallback((crewId: string, message?: string) => {
+    const requestJoinCrewFn = useCallback((crewId: string, message?: string) => {
         const crew = crews.find(c => c.id === crewId);
         if (!crew || crew.joinType !== "approval") return;
 
@@ -682,32 +855,43 @@ export function CrewProvider({ children }: { children: ReactNode }) {
             requestedAt: new Date(),
             status: "pending",
         };
+
+        // Optimistic update
         setJoinRequests(prev => [...prev, newRequest]);
-    }, [crews, members, joinRequests, currentUserId, currentUserNickname]);
+
+        // 실제 사용자: Supabase에 저장
+        if (isRealUser && realUserId && isValidUUID(crewId)) {
+            requestJoinCrewInDb(crewId, realUserId, message).catch((error) => {
+                console.error("[CrewContext] requestJoinCrew failed:", error);
+                // 롤백
+                setJoinRequests(prev => prev.filter(r => r.id !== newRequest.id));
+            });
+        }
+    }, [crews, members, joinRequests, currentUserId, currentUserNickname, isRealUser, realUserId]);
 
     // 가입 신청 목록 조회 (크루장용)
-    const getJoinRequests = useCallback((crewId: string): CrewJoinRequest[] => {
+    const getJoinRequestsFn = useCallback((crewId: string): CrewJoinRequest[] => {
         return joinRequests
             .filter(r => r.crewId === crewId)
             .sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
     }, [joinRequests]);
 
     // 가입 신청 승인 (크루장용)
-    const approveJoinRequest = useCallback((requestId: string) => {
+    const approveJoinRequestFn = useCallback((requestId: string) => {
         const request = joinRequests.find(r => r.id === requestId);
         if (!request || request.status !== "pending") return;
 
         // 크루장인지 확인
         if (!members.some(m => m.crewId === request.crewId && m.userId === currentUserId && m.role === "leader")) return;
 
-        // 신청 상태 업데이트
+        // Optimistic update: 신청 상태 업데이트
         setJoinRequests(prev => prev.map(r =>
             r.id === requestId
                 ? { ...r, status: "approved" as const, processedAt: new Date(), processedBy: currentUserId }
                 : r
         ));
 
-        // 멤버로 추가
+        // Optimistic update: 멤버로 추가
         const newMember: CrewMember = {
             crewId: request.crewId,
             userId: request.userId,
@@ -718,50 +902,77 @@ export function CrewProvider({ children }: { children: ReactNode }) {
         };
         setMembers(prev => [...prev, newMember]);
 
-        // 활동 기록
-        const activity: CrewActivity = {
-            id: `act_${Date.now()}`,
-            crewId: request.crewId,
-            userId: request.userId,
-            userNickname: request.userNickname,
-            type: "join",
-            createdAt: new Date(),
-        };
-        setActivities(prev => [...prev, activity]);
-    }, [joinRequests, members, currentUserId]);
+        // 실제 사용자: Supabase에 저장
+        if (isRealUser && realUserId && isValidUUID(requestId)) {
+            approveJoinRequestInDb(requestId, realUserId).catch((error) => {
+                console.error("[CrewContext] approveJoinRequest failed:", error);
+                // 롤백
+                setJoinRequests(prev => prev.map(r =>
+                    r.id === requestId ? { ...r, status: "pending" as const, processedAt: undefined, processedBy: undefined } : r
+                ));
+                setMembers(prev => prev.filter(
+                    m => !(m.crewId === request.crewId && m.userId === request.userId)
+                ));
+            });
+        }
+
+        // 활동 기록 (Dev 모드만)
+        if (!isRealUser) {
+            const activity: CrewActivity = {
+                id: `act_${Date.now()}`,
+                crewId: request.crewId,
+                userId: request.userId,
+                userNickname: request.userNickname,
+                type: "join",
+                createdAt: new Date(),
+            };
+            setActivities(prev => [...prev, activity]);
+        }
+    }, [joinRequests, members, currentUserId, isRealUser, realUserId]);
 
     // 가입 신청 거절 (크루장용)
-    const rejectJoinRequest = useCallback((requestId: string) => {
+    const rejectJoinRequestFn = useCallback((requestId: string) => {
         const request = joinRequests.find(r => r.id === requestId);
         if (!request || request.status !== "pending") return;
 
         // 크루장인지 확인
         if (!members.some(m => m.crewId === request.crewId && m.userId === currentUserId && m.role === "leader")) return;
 
-        // 신청 상태 업데이트
+        // Optimistic update
         setJoinRequests(prev => prev.map(r =>
             r.id === requestId
                 ? { ...r, status: "rejected" as const, processedAt: new Date(), processedBy: currentUserId }
                 : r
         ));
-    }, [joinRequests, members, currentUserId]);
+
+        // 실제 사용자: Supabase에 저장
+        if (isRealUser && realUserId && isValidUUID(requestId)) {
+            rejectJoinRequestInDb(requestId, realUserId).catch((error) => {
+                console.error("[CrewContext] rejectJoinRequest failed:", error);
+                // 롤백
+                setJoinRequests(prev => prev.map(r =>
+                    r.id === requestId ? { ...r, status: "pending" as const, processedAt: undefined, processedBy: undefined } : r
+                ));
+            });
+        }
+    }, [joinRequests, members, currentUserId, isRealUser, realUserId]);
 
     // 가입 신청 여부 확인
-    const hasJoinRequest = useCallback((crewId: string): boolean => {
+    const hasJoinRequestFn = useCallback((crewId: string): boolean => {
         return joinRequests.some(
             r => r.crewId === crewId && r.userId === currentUserId && r.status === "pending"
         );
     }, [joinRequests, currentUserId]);
 
     // 대기 중인 가입 신청 수
-    const getPendingRequestCount = useCallback((crewId: string): number => {
+    const getPendingRequestCountFn = useCallback((crewId: string): number => {
         return joinRequests.filter(r => r.crewId === crewId && r.status === "pending").length;
     }, [joinRequests]);
 
     // ===== 멤버 관리 (크루장용) =====
 
     // 멤버 강퇴
-    const kickMember = useCallback((crewId: string, userId: string) => {
+    const kickMemberFn = useCallback((crewId: string, userId: string) => {
         // 크루장인지 확인
         if (!members.some(m => m.crewId === crewId && m.userId === currentUserId && m.role === "leader")) return;
 
@@ -772,25 +983,36 @@ export function CrewProvider({ children }: { children: ReactNode }) {
         const targetMember = members.find(m => m.crewId === crewId && m.userId === userId);
         if (!targetMember) return;
 
-        // 멤버 제거
+        // Optimistic update
         setMembers(prev => prev.filter(m => !(m.crewId === crewId && m.userId === userId)));
 
-        // 활동 기록 (leave로 기록)
-        const activity: CrewActivity = {
-            id: `act_${Date.now()}`,
-            crewId,
-            userId,
-            userNickname: targetMember.userNickname,
-            type: "leave",
-            createdAt: new Date(),
-        };
-        setActivities(prev => [...prev, activity]);
-    }, [members, currentUserId]);
+        // 실제 사용자: Supabase에서 삭제
+        if (isRealUser && realUserId && isValidUUID(crewId) && isValidUUID(userId)) {
+            kickMemberInDb(crewId, userId).catch((error) => {
+                console.error("[CrewContext] kickMember failed:", error);
+                // 롤백
+                setMembers(prev => [...prev, targetMember]);
+            });
+        }
+
+        // 활동 기록 (Dev 모드만)
+        if (!isRealUser) {
+            const activity: CrewActivity = {
+                id: `act_${Date.now()}`,
+                crewId,
+                userId,
+                userNickname: targetMember.userNickname,
+                type: "leave",
+                createdAt: new Date(),
+            };
+            setActivities(prev => [...prev, activity]);
+        }
+    }, [members, currentUserId, isRealUser, realUserId]);
 
     // ===== 공지 관련 =====
 
     // 공지 목록 조회
-    const getAnnouncements = useCallback((crewId: string): CrewAnnouncement[] => {
+    const getAnnouncementsFn = useCallback((crewId: string): CrewAnnouncement[] => {
         return announcements
             .filter(a => a.crewId === crewId)
             .sort((a, b) => {
@@ -802,7 +1024,7 @@ export function CrewProvider({ children }: { children: ReactNode }) {
     }, [announcements]);
 
     // 공지 작성 (크루장용)
-    const createAnnouncement = useCallback((crewId: string, content: string, isPinned: boolean = false) => {
+    const createAnnouncementFn = useCallback((crewId: string, content: string, isPinned: boolean = false) => {
         // 크루장인지 확인
         const leaderMember = members.find(m => m.crewId === crewId && m.userId === currentUserId && m.role === "leader");
         if (!leaderMember) return;
@@ -816,34 +1038,78 @@ export function CrewProvider({ children }: { children: ReactNode }) {
             isPinned,
             createdAt: new Date(),
         };
+
+        // Optimistic update
         setAnnouncements(prev => [...prev, newAnnouncement]);
-    }, [members, currentUserId]);
+
+        // 실제 사용자: Supabase에 저장
+        if (isRealUser && realUserId && isValidUUID(crewId)) {
+            createAnnouncementInDb(crewId, realUserId, content, isPinned)
+                .then((dbAnn) => {
+                    // 실제 공지로 교체
+                    setAnnouncements(prev => prev.map(a =>
+                        a.id === newAnnouncement.id
+                            ? transformDbAnnouncementToFrontend(dbAnn, leaderMember.userNickname)
+                            : a
+                    ));
+                })
+                .catch((error) => {
+                    console.error("[CrewContext] createAnnouncement failed:", error);
+                    // 롤백
+                    setAnnouncements(prev => prev.filter(a => a.id !== newAnnouncement.id));
+                });
+        }
+    }, [members, currentUserId, isRealUser, realUserId]);
 
     // 공지 삭제 (크루장용)
-    const deleteAnnouncement = useCallback((announcementId: string) => {
+    const deleteAnnouncementFn = useCallback((announcementId: string) => {
         const announcement = announcements.find(a => a.id === announcementId);
         if (!announcement) return;
 
         // 크루장인지 확인
         if (!members.some(m => m.crewId === announcement.crewId && m.userId === currentUserId && m.role === "leader")) return;
 
+        // Optimistic update
         setAnnouncements(prev => prev.filter(a => a.id !== announcementId));
-    }, [announcements, members, currentUserId]);
+
+        // 실제 사용자: Supabase에서 삭제
+        if (isRealUser && realUserId && isValidUUID(announcementId)) {
+            deleteAnnouncementInDb(announcementId).catch((error) => {
+                console.error("[CrewContext] deleteAnnouncement failed:", error);
+                // 롤백
+                setAnnouncements(prev => [...prev, announcement]);
+            });
+        }
+    }, [announcements, members, currentUserId, isRealUser, realUserId]);
 
     // 공지 고정/해제 (크루장용)
-    const toggleAnnouncementPin = useCallback((announcementId: string) => {
+    const toggleAnnouncementPinFn = useCallback((announcementId: string) => {
         const announcement = announcements.find(a => a.id === announcementId);
         if (!announcement) return;
 
         // 크루장인지 확인
         if (!members.some(m => m.crewId === announcement.crewId && m.userId === currentUserId && m.role === "leader")) return;
 
+        const newIsPinned = !announcement.isPinned;
+
+        // Optimistic update
         setAnnouncements(prev => prev.map(a =>
             a.id === announcementId
-                ? { ...a, isPinned: !a.isPinned, updatedAt: new Date() }
+                ? { ...a, isPinned: newIsPinned, updatedAt: new Date() }
                 : a
         ));
-    }, [announcements, members, currentUserId]);
+
+        // 실제 사용자: Supabase에 저장
+        if (isRealUser && realUserId && isValidUUID(announcementId)) {
+            toggleAnnouncementPinInDb(announcementId, newIsPinned).catch((error) => {
+                console.error("[CrewContext] toggleAnnouncementPin failed:", error);
+                // 롤백
+                setAnnouncements(prev => prev.map(a =>
+                    a.id === announcementId ? { ...a, isPinned: announcement.isPinned } : a
+                ));
+            });
+        }
+    }, [announcements, members, currentUserId, isRealUser, realUserId]);
 
     return (
         <CrewContext.Provider
@@ -851,31 +1117,34 @@ export function CrewProvider({ children }: { children: ReactNode }) {
                 allCrews,
                 myCrews,
                 getCrew,
-                getCrewMembers,
+                getCrewMembers: getCrewMembersFn,
                 getCrewActivities,
                 getCrewStats,
-                getCrewEvents,
-                addCrewEvent,
-                createCrew,
-                joinCrew,
-                leaveCrew,
+                getCrewEvents: getCrewEventsFn,
+                addCrewEvent: addCrewEventFn,
+                createCrew: createCrewFn,
+                joinCrew: joinCrewFn,
+                leaveCrew: leaveCrewFn,
                 isMember,
                 isLeader,
                 currentUserId,
                 // 가입 신청 관련
-                requestJoinCrew,
-                getJoinRequests,
-                approveJoinRequest,
-                rejectJoinRequest,
-                hasJoinRequest,
-                getPendingRequestCount,
+                requestJoinCrew: requestJoinCrewFn,
+                getJoinRequests: getJoinRequestsFn,
+                approveJoinRequest: approveJoinRequestFn,
+                rejectJoinRequest: rejectJoinRequestFn,
+                hasJoinRequest: hasJoinRequestFn,
+                getPendingRequestCount: getPendingRequestCountFn,
                 // 멤버 관리
-                kickMember,
+                kickMember: kickMemberFn,
                 // 공지 관련
-                getAnnouncements,
-                createAnnouncement,
-                deleteAnnouncement,
-                toggleAnnouncementPin,
+                getAnnouncements: getAnnouncementsFn,
+                createAnnouncement: createAnnouncementFn,
+                deleteAnnouncement: deleteAnnouncementFn,
+                toggleAnnouncementPin: toggleAnnouncementPinFn,
+                // 상태
+                isFromSupabase,
+                isLoading,
             }}
         >
             {children}

@@ -6,6 +6,7 @@ import { useWishlist } from "./wishlist-context";
 import { useDevContext } from "./dev-context";
 import { MOCK_EVENTS, MOCK_POSTS } from "./mock-data";
 import { Event } from "@/types/event";
+import { createUserAdapter, DOMAINS } from "./storage";
 
 interface BadgeStats {
     attendanceCount: number;
@@ -38,8 +39,11 @@ interface BadgeContextValue {
 
 const BadgeContext = createContext<BadgeContextValue | null>(null);
 
-// 사용자별 storage key
-const getStorageKey = (userId: string) => `fesmate_badges_${userId}`;
+// Storage adapter factory (userId 기반)
+const createBadgeAdapter = createUserAdapter<EarnedBadge[]>({
+    domain: DOMAINS.BADGES,
+    dateFields: ["earnedAt"],
+});
 
 // Mock: 다른 사용자들의 배지 데이터 (실제로는 서버에서 가져와야 함)
 const MOCK_USER_BADGES: Record<string, EarnedBadge[]> = {
@@ -100,50 +104,45 @@ export function BadgeProvider({ children }: { children: ReactNode }) {
     const [isInitialized, setIsInitialized] = useState(false);
     const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
 
-    // 사용자 변경 또는 초기 로드 시 localStorage에서 불러오기
+    // Storage adapter (userId 변경 시 재생성)
+    const badgeAdapter = useMemo(
+        () => createBadgeAdapter(currentUserId),
+        [currentUserId]
+    );
+
+    // 사용자 변경 또는 초기 로드 시 storage에서 불러오기
     useEffect(() => {
         if (loadedUserId !== currentUserId) {
-            const storageKey = getStorageKey(currentUserId);
-            const stored = localStorage.getItem(storageKey);
+            const stored = badgeAdapter.get();
             if (stored) {
-                try {
-                    const parsed = JSON.parse(stored);
-                    // 기존 배지 중 triggerEventTitle이 없는 것이 있으면 초기화
-                    const hasMissingTrigger = parsed.some((b: EarnedBadge) => !b.triggerEventTitle);
-                    if (hasMissingTrigger) {
-                        // 배지 데이터 초기화하여 새로 획득하도록 함
-                        localStorage.removeItem(storageKey);
-                        // Mock 데이터로 초기화
-                        const mockBadges = MOCK_USER_BADGES[currentUserId] || [];
-                        setEarnedBadges(mockBadges);
-                    } else {
-                        setEarnedBadges(parsed.map((b: EarnedBadge) => ({
-                            ...b,
-                            earnedAt: new Date(b.earnedAt),
-                        })));
-                    }
-                } catch {
-                    console.error("Failed to parse badges from localStorage");
+                // 기존 배지 중 triggerEventTitle이 없는 것이 있으면 초기화
+                const hasMissingTrigger = stored.some((b: EarnedBadge) => !b.triggerEventTitle);
+                if (hasMissingTrigger) {
+                    // 배지 데이터 초기화하여 새로 획득하도록 함
+                    badgeAdapter.remove();
+                    // Mock 데이터로 초기화
                     const mockBadges = MOCK_USER_BADGES[currentUserId] || [];
                     setEarnedBadges(mockBadges);
+                } else {
+                    // Date 복원은 adapter에서 처리됨
+                    setEarnedBadges(stored);
                 }
             } else {
-                // localStorage에 없으면 Mock 데이터로 초기화
+                // storage에 없으면 Mock 데이터로 초기화
                 const mockBadges = MOCK_USER_BADGES[currentUserId] || [];
                 setEarnedBadges(mockBadges);
             }
             setLoadedUserId(currentUserId);
             setIsInitialized(true);
         }
-    }, [currentUserId, loadedUserId]);
+    }, [currentUserId, loadedUserId, badgeAdapter]);
 
-    // localStorage에 저장 (현재 사용자의 데이터만)
+    // Storage에 저장 (현재 사용자의 데이터만)
     useEffect(() => {
         if (isInitialized && loadedUserId === currentUserId) {
-            const storageKey = getStorageKey(currentUserId);
-            localStorage.setItem(storageKey, JSON.stringify(earnedBadges));
+            badgeAdapter.set(earnedBadges);
         }
-    }, [earnedBadges, isInitialized, currentUserId, loadedUserId]);
+    }, [earnedBadges, isInitialized, currentUserId, loadedUserId, badgeAdapter]);
 
     // 다녀온 행사 목록
     const attendedEvents = useMemo(() => {
@@ -165,7 +164,7 @@ export function BadgeProvider({ children }: { children: ReactNode }) {
             genreCount[type] = (genreCount[type] || 0) + 1;
 
             // 지역
-            const region = extractRegion(event.venue.address);
+            const region = extractRegion(event.venue?.address || "");
             regionCount[region] = (regionCount[region] || 0) + 1;
 
             // 연도
@@ -353,21 +352,13 @@ export function BadgeProvider({ children }: { children: ReactNode }) {
         if (userId === currentUserId) {
             return earnedBadges;
         }
-        // 다른 사용자: localStorage 또는 Mock 데이터
-        try {
-            const storageKey = getStorageKey(userId);
-            const stored = localStorage.getItem(storageKey);
-            if (stored) {
-                const parsed = JSON.parse(stored);
-                return parsed.map((b: EarnedBadge) => ({
-                    ...b,
-                    earnedAt: new Date(b.earnedAt),
-                }));
-            }
-        } catch {
-            console.error("Failed to load user badges from localStorage");
+        // 다른 사용자: storage 또는 Mock 데이터
+        const adapter = createBadgeAdapter(userId);
+        const stored = adapter.get();
+        if (stored) {
+            return stored;
         }
-        // localStorage에 없으면 Mock 데이터 반환
+        // storage에 없으면 Mock 데이터 반환
         return MOCK_USER_BADGES[userId] || [];
     }, [earnedBadges, currentUserId]);
 

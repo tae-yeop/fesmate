@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { useDevContext } from "@/lib/dev-context";
 import { useUserProfile } from "@/lib/user-profile-context";
+import { useNotification } from "@/lib/notification-context";
 import { useState } from "react";
-import { getUnreadNotificationCount } from "@/lib/mock-data";
 
 /**
  * 헤더 컴포넌트 - PRD v0.5 기준
@@ -20,10 +20,8 @@ export function Header() {
     const { user, isLoading, signOut } = useAuth();
     const { isDevMode } = useDevContext();
     const { myProfile, isLoggedIn } = useUserProfile();
+    const { unreadCount } = useNotification();
     const [showMenu, setShowMenu] = useState(false);
-
-    // 읽지 않은 알림 수 (실제로는 user?.id 사용)
-    const unreadCount = getUnreadNotificationCount();
 
     const navItems = [
         { title: "홈", href: "/", icon: Home },

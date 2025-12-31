@@ -9,7 +9,7 @@ import { Post, POST_TYPE_LABELS } from "@/types/post";
 import { formatTime, getRelativeTime } from "@/lib/utils/date-format";
 import { getPostTypeColor, getTrustLevelColor, HUB_MODE_STYLES } from "@/lib/constants/styles";
 import { MapActionSheet } from "@/components/maps";
-import { getDefaultMapApp, openMap } from "@/lib/utils/map-deeplink";
+import { getDefaultMapApp, hasDefaultMapApp, openMap } from "@/lib/utils/map-deeplink";
 import { maskContactInfo } from "@/lib/utils/contact-mask";
 import { useDevContext } from "@/lib/dev-context";
 import { useAuth } from "@/lib/auth-context";
@@ -64,9 +64,9 @@ export function HubTab({ event, posts, slots }: HubTabProps) {
 
     // 지도 보기 핸들러
     const handleOpenMap = (placeText: string, placeHint?: string) => {
-        const defaultApp = getDefaultMapApp();
         // 기본 지도앱이 설정되어 있으면 바로 열기
-        if (defaultApp && localStorage.getItem("fesmate_default_map_app")) {
+        if (hasDefaultMapApp()) {
+            const defaultApp = getDefaultMapApp();
             openMap(defaultApp, placeText, placeHint);
         } else {
             // 설정 안 되어 있으면 액션시트 표시

@@ -26,7 +26,7 @@ CREATE TABLE songs (
 );
 
 CREATE INDEX idx_songs_artist ON songs(artist_id);
-CREATE INDEX idx_songs_title ON songs USING gin(to_tsvector('korean', title));
+CREATE INDEX idx_songs_title ON songs USING gin(to_tsvector('simple', title));
 CREATE UNIQUE INDEX idx_songs_youtube ON songs(youtube_id);
 CREATE INDEX idx_songs_has_guide ON songs(has_call_guide) WHERE has_call_guide = TRUE;
 
@@ -84,6 +84,10 @@ CREATE TABLE call_guide_entries (
 
     display_order INTEGER DEFAULT 0,
 
+    -- 개별 엔트리 작성자 & 도움됨
+    created_by UUID REFERENCES users(id),
+    helpful_count INTEGER DEFAULT 0,
+
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -134,6 +138,24 @@ CREATE INDEX idx_call_guide_reactions_guide ON call_guide_reactions(call_guide_i
 COMMENT ON TABLE call_guide_reactions IS '콜가이드 반응 (도움됨)';
 
 -- =============================================
+-- CALL_GUIDE_ENTRY_REACTIONS - 개별 엔트리 반응 (도움됨)
+-- =============================================
+CREATE TABLE call_guide_entry_reactions (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    entry_id UUID NOT NULL REFERENCES call_guide_entries(id) ON DELETE CASCADE,
+
+    reaction_type TEXT DEFAULT 'helpful' CHECK (reaction_type IN ('helpful')),
+
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    PRIMARY KEY (user_id, entry_id)
+);
+
+CREATE INDEX idx_call_guide_entry_reactions_entry ON call_guide_entry_reactions(entry_id);
+
+COMMENT ON TABLE call_guide_entry_reactions IS '콜가이드 엔트리별 반응 (도움됨)';
+
+-- =============================================
 -- TRIGGERS
 -- =============================================
 
@@ -170,6 +192,23 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trigger_update_call_guide_helpful_count
     AFTER INSERT OR DELETE ON call_guide_reactions
     FOR EACH ROW EXECUTE FUNCTION update_call_guide_helpful_count();
+
+-- call_guide_entry_reactions 변경 시 call_guide_entries.helpful_count 업데이트
+CREATE OR REPLACE FUNCTION update_call_guide_entry_helpful_count()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        UPDATE call_guide_entries SET helpful_count = helpful_count + 1 WHERE id = NEW.entry_id;
+    ELSIF TG_OP = 'DELETE' THEN
+        UPDATE call_guide_entries SET helpful_count = GREATEST(0, helpful_count - 1) WHERE id = OLD.entry_id;
+    END IF;
+    RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_call_guide_entry_helpful_count
+    AFTER INSERT OR DELETE ON call_guide_entry_reactions
+    FOR EACH ROW EXECUTE FUNCTION update_call_guide_entry_helpful_count();
 
 -- updated_at 트리거
 CREATE TRIGGER update_call_guides_updated_at

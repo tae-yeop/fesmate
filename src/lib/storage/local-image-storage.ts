@@ -14,8 +14,9 @@ import {
     generateThumbnail,
     generateImageId,
 } from "./image-utils";
+import { buildSharedKey, DOMAINS } from "./keys";
 
-const STORAGE_KEY = "fesmate_images";
+const STORAGE_KEY = buildSharedKey(DOMAINS.IMAGES);
 const MAX_STORAGE_SIZE = 50 * 1024 * 1024; // 50MB 제한 (localStorage 한계)
 
 /**

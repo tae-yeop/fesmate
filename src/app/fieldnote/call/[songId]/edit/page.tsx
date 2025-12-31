@@ -6,6 +6,7 @@ import { CallGuideEditor } from "@/components/call-guide";
 import { getMockCallGuideBySongId, MOCK_SONGS, MOCK_CALL_GUIDES } from "@/lib/mock-call-guide";
 import { useCallGuide } from "@/lib/call-guide-context";
 import { useDevContext } from "@/lib/dev-context";
+import { useAuth } from "@/lib/auth-context";
 import { CallGuide, CallGuideEntry } from "@/types/call-guide";
 
 interface PageProps {
@@ -16,7 +17,13 @@ export default function CallGuideEditPage({ params }: PageProps) {
     const { songId } = use(params);
     const router = useRouter();
     const { updateCallGuide, createCallGuide } = useCallGuide();
-    const { mockUserId, isLoggedIn } = useDevContext();
+    const { mockUserId, isLoggedIn: devIsLoggedIn } = useDevContext();
+    const { user } = useAuth();
+
+    // 실제 Supabase 로그인 OR Dev 모드 로그인
+    const isLoggedIn = !!user || devIsLoggedIn;
+    // 사용자 ID: 실제 로그인 > Dev 모드 > guest
+    const userId = user?.id || mockUserId || "guest";
 
     // Mock 데이터에서 콜가이드 찾기
     const existingGuide = useMemo(() => {
@@ -32,8 +39,6 @@ export default function CallGuideEditPage({ params }: PageProps) {
         if (existingGuide) {
             return existingGuide;
         }
-
-        const userId = mockUserId || "guest";
 
         if (song) {
             return {
@@ -52,7 +57,7 @@ export default function CallGuideEditPage({ params }: PageProps) {
         }
 
         return null as unknown as CallGuide;
-    }, [existingGuide, song, songId, mockUserId]);
+    }, [existingGuide, song, songId, userId]);
 
     if (!song) {
         return (
@@ -88,8 +93,6 @@ export default function CallGuideEditPage({ params }: PageProps) {
             </div>
         );
     }
-
-    const userId = mockUserId || "guest";
 
     const handleSave = (entries: CallGuideEntry[], changeDescription?: string) => {
         if (existingGuide) {

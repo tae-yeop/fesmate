@@ -7,6 +7,7 @@ import { CallGuideViewer } from "@/components/call-guide";
 import { getMockCallGuideBySongId, MOCK_SONGS } from "@/lib/mock-call-guide";
 import { useCallGuide } from "@/lib/call-guide-context";
 import { useDevContext } from "@/lib/dev-context";
+import { useAuth } from "@/lib/auth-context";
 
 interface PageProps {
     params: Promise<{ songId: string }>;
@@ -15,8 +16,12 @@ interface PageProps {
 export default function CallGuideViewPage({ params }: PageProps) {
     const { songId } = use(params);
     const router = useRouter();
-    const { toggleHelpful, isHelpful, getHelpfulCount } = useCallGuide();
-    const { isLoggedIn } = useDevContext();
+    const { toggleHelpful, isHelpful, getHelpfulCount, toggleEntryHelpful, isEntryHelpful, getEntryHelpfulCount } = useCallGuide();
+    const { isLoggedIn: devIsLoggedIn } = useDevContext();
+    const { user } = useAuth();
+
+    // 실제 Supabase 로그인 OR Dev 모드 로그인
+    const isLoggedIn = !!user || devIsLoggedIn;
 
     // Mock 데이터에서 콜가이드 찾기
     const callGuide = useMemo(() => {
@@ -93,6 +98,9 @@ export default function CallGuideViewPage({ params }: PageProps) {
                 onEdit={handleEdit}
                 onHelpful={handleHelpful}
                 isHelpful={helpful}
+                onEntryHelpful={(entryId) => toggleEntryHelpful(callGuide.id, entryId)}
+                isEntryHelpful={isEntryHelpful}
+                getEntryHelpfulCount={getEntryHelpfulCount}
             />
         </div>
     );

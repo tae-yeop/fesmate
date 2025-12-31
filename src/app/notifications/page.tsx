@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import {
     Bell,
@@ -21,7 +21,7 @@ import {
     AlarmClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getNotifications, MOCK_NOTIFICATIONS } from "@/lib/mock-data";
+import { useNotification } from "@/lib/notification-context";
 import { Notification, NotificationType, NOTIFICATION_CONFIG } from "@/types/notification";
 
 type FilterType = "all" | "unread";
@@ -54,7 +54,21 @@ const ICON_MAP: Record<string, React.ElementType> = {
  */
 export default function NotificationsPage() {
     const [filter, setFilter] = useState<FilterType>("all");
-    const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
+    const [isClient, setIsClient] = useState(false);
+
+    // NotificationContext에서 상태와 함수 가져오기
+    const {
+        notifications,
+        unreadCount,
+        markAsRead,
+        markAllAsRead,
+        deleteNotification,
+    } = useNotification();
+
+    // Hydration 에러 방지: 클라이언트에서만 시간 계산
+    useEffect(() => {
+        setIsClient(true);
+    }, []);
 
     // 필터링
     const filteredNotifications = useMemo(() => {
@@ -64,11 +78,10 @@ export default function NotificationsPage() {
         return notifications;
     }, [notifications, filter]);
 
-    // 읽지 않은 알림 개수
-    const unreadCount = notifications.filter(n => !n.isRead).length;
-
-    // 상대 시간
+    // 상대 시간 (클라이언트에서만 계산)
     const getRelativeTime = (date: Date) => {
+        if (!isClient) return ""; // 서버 렌더링 시 빈 문자열
+
         const now = new Date();
         const diff = now.getTime() - new Date(date).getTime();
         const minutes = Math.floor(diff / (1000 * 60));
@@ -80,25 +93,6 @@ export default function NotificationsPage() {
         if (hours < 24) return `${hours}시간 전`;
         if (days < 7) return `${days}일 전`;
         return new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric" }).format(new Date(date));
-    };
-
-    // 알림 읽음 처리
-    const markAsRead = (id: string) => {
-        setNotifications(prev =>
-            prev.map(n => n.id === id ? { ...n, isRead: true } : n)
-        );
-    };
-
-    // 모두 읽음 처리
-    const markAllAsRead = () => {
-        setNotifications(prev =>
-            prev.map(n => ({ ...n, isRead: true }))
-        );
-    };
-
-    // 알림 삭제
-    const deleteNotification = (id: string) => {
-        setNotifications(prev => prev.filter(n => n.id !== id));
     };
 
     // 날짜별 그룹화
@@ -220,8 +214,8 @@ function NotificationItem({
     getRelativeTime,
 }: {
     notification: Notification;
-    onRead: (id: string) => void;
-    onDelete: (id: string) => void;
+    onRead: (id: string) => Promise<void>;
+    onDelete: (id: string) => Promise<void>;
     getRelativeTime: (date: Date) => string;
 }) {
     const config = NOTIFICATION_CONFIG[notification.type];
@@ -229,7 +223,7 @@ function NotificationItem({
 
     const handleClick = () => {
         if (!notification.isRead) {
-            onRead(notification.id);
+            void onRead(notification.id);
         }
     };
 
@@ -278,7 +272,7 @@ function NotificationItem({
             <div className="flex flex-col gap-1">
                 {!notification.isRead && (
                     <button
-                        onClick={() => onRead(notification.id)}
+                        onClick={() => void onRead(notification.id)}
                         className="p-1 text-muted-foreground hover:text-primary rounded"
                         title="읽음으로 표시"
                     >
@@ -286,7 +280,7 @@ function NotificationItem({
                     </button>
                 )}
                 <button
-                    onClick={() => onDelete(notification.id)}
+                    onClick={() => void onDelete(notification.id)}
                     className="p-1 text-muted-foreground hover:text-red-500 rounded"
                     title="삭제"
                 >

@@ -134,7 +134,7 @@ export function EventListItem({
                     {/* 장소 */}
                     <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
                         <MapPin className="h-3 w-3" />
-                        <span className="line-clamp-1">{event.venue.name}</span>
+                        <span className="line-clamp-1">{event.venue?.name}</span>
                     </div>
 
                     {/* 통계 + 아티스트/타입 */}

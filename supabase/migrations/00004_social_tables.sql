@@ -35,7 +35,7 @@ CREATE TABLE crews (
 CREATE INDEX idx_crews_region ON crews(region);
 CREATE INDEX idx_crews_genre ON crews(genre);
 CREATE INDEX idx_crews_public ON crews(is_public) WHERE is_public = TRUE;
-CREATE INDEX idx_crews_name ON crews USING gin(to_tsvector('korean', name));
+CREATE INDEX idx_crews_name ON crews USING gin(to_tsvector('simple', name));
 
 COMMENT ON TABLE crews IS '크루 (같이 공연을 다니는 지속적인 모임)';
 COMMENT ON COLUMN crews.join_type IS '가입 방식: open(자유 가입), approval(승인 필요)';

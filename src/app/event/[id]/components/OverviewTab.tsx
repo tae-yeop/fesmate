@@ -33,8 +33,8 @@ export function OverviewTab({ event }: OverviewTabProps) {
                         <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />
                         <div>
                             <p className="font-medium">장소</p>
-                            <p className="text-muted-foreground">{event.venue.name}</p>
-                            <p className="text-xs text-muted-foreground">{event.venue.address}</p>
+                            <p className="text-muted-foreground">{event.venue?.name || "장소 미정"}</p>
+                            <p className="text-xs text-muted-foreground">{event.venue?.address}</p>
                         </div>
                     </div>
                     {event.price && (

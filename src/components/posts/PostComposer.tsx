@@ -425,7 +425,7 @@ function EventSelectorModal({
         const filtered = searchQuery.trim()
             ? activeEvents.filter(e =>
                 e.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                e.venue.name.toLowerCase().includes(searchQuery.toLowerCase())
+                e.venue?.name?.toLowerCase().includes(searchQuery.toLowerCase())
             )
             : activeEvents;
 
@@ -506,7 +506,7 @@ function EventSelectorModal({
                                     >
                                         <p className="font-medium text-sm line-clamp-1">{event.title}</p>
                                         <p className="text-xs text-muted-foreground mt-0.5">
-                                            {formatDate(event.startAt)} · {event.venue.name}
+                                            {formatDate(event.startAt)} · {event.venue?.name}
                                         </p>
                                     </button>
                                 ))}
@@ -536,7 +536,7 @@ function EventSelectorModal({
                                             <div className="flex-1 min-w-0">
                                                 <p className="font-medium text-sm line-clamp-1">{event.title}</p>
                                                 <p className="text-xs text-muted-foreground mt-0.5">
-                                                    {formatDate(event.startAt)} · {event.venue.name}
+                                                    {formatDate(event.startAt)} · {event.venue?.name}
                                                 </p>
                                             </div>
                                             {wishlistIds.includes(event.id) && (

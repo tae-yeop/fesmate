@@ -14,6 +14,7 @@ import {
     CreateCompanionRequestInput,
 } from "@/types/companion";
 import { useDevContext } from "./dev-context";
+import { createSharedAdapter, DOMAINS } from "./storage";
 
 // ===== Mock 동행 제안 데이터 =====
 
@@ -75,7 +76,11 @@ interface CompanionContextValue {
 
 const CompanionContext = createContext<CompanionContextValue | null>(null);
 
-const STORAGE_KEY_COMPANION = "fesmate_companion_requests";
+// Storage adapter (전역 공유 데이터)
+const companionAdapter = createSharedAdapter<CompanionRequest[]>({
+    domain: DOMAINS.COMPANION_REQUESTS,
+    dateFields: ["createdAt", "respondedAt"],
+});
 
 export function CompanionProvider({ children }: { children: ReactNode }) {
     const { mockUserId } = useDevContext();
@@ -84,30 +89,19 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
     const [requests, setRequests] = useState<CompanionRequest[]>(MOCK_COMPANION_REQUESTS);
     const [isInitialized, setIsInitialized] = useState(false);
 
-    // localStorage에서 불러오기
+    // Storage에서 불러오기
     useEffect(() => {
-        const stored = localStorage.getItem(STORAGE_KEY_COMPANION);
+        const stored = companionAdapter.get();
         if (stored) {
-            try {
-                const parsed = JSON.parse(stored);
-                setRequests(
-                    parsed.map((r: CompanionRequest) => ({
-                        ...r,
-                        createdAt: new Date(r.createdAt),
-                        respondedAt: r.respondedAt ? new Date(r.respondedAt) : undefined,
-                    }))
-                );
-            } catch {
-                console.error("Failed to parse companion requests from localStorage");
-            }
+            setRequests(stored);
         }
         setIsInitialized(true);
     }, []);
 
-    // localStorage에 저장
+    // Storage에 저장
     useEffect(() => {
         if (isInitialized) {
-            localStorage.setItem(STORAGE_KEY_COMPANION, JSON.stringify(requests));
+            companionAdapter.set(requests);
         }
     }, [requests, isInitialized]);
 

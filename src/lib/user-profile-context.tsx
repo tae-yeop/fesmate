@@ -10,7 +10,16 @@ import {
     ReactNode,
 } from "react";
 import { useDevContext } from "./dev-context";
+import { useAuth } from "./auth-context";
 import { MOCK_USER_PROFILES } from "./follow-context";
+import { createSharedAdapter, DOMAINS } from "./storage";
+import {
+    getUserProfile as getUserProfileFromDb,
+    ensureUserExists,
+    updateUserProfile as updateUserProfileInDb,
+    updatePrivacySettings as updatePrivacySettingsInDb,
+    type PrivacySettings as DbPrivacySettings,
+} from "./supabase/queries";
 
 /** 프라이버시 공개 대상 */
 export type PrivacyLevel = "public" | "friends" | "crew" | "private";
@@ -99,11 +108,18 @@ interface UserProfileContextValue {
     canViewContent: (viewerId: string, contentType: keyof PrivacySettings) => boolean;
     /** 초기화 여부 */
     isInitialized: boolean;
+    /** 데이터 소스 표시 */
+    isFromSupabase: boolean;
+    /** 로딩 상태 */
+    isLoading: boolean;
 }
 
 const UserProfileContext = createContext<UserProfileContextValue | null>(null);
 
-const STORAGE_KEY = "fesmate_user_profiles";
+// Storage adapter (전역 공유 데이터) - Dev 모드용
+const userProfilesAdapter = createSharedAdapter<Record<string, Omit<MyProfile, "id">>>({
+    domain: DOMAINS.USER_PROFILES,
+});
 
 // 기본 프로필 (user1 기준)
 const DEFAULT_PROFILE: Omit<MyProfile, "id"> = {
@@ -113,55 +129,158 @@ const DEFAULT_PROFILE: Omit<MyProfile, "id"> = {
     privacy: DEFAULT_PRIVACY_SETTINGS,
 };
 
+// DB PrivacySettings를 Frontend PrivacySettings로 변환
+// DbPrivacySettings: { wishlist, attended, gonglog, badge, crewActivity, friendsList }
+// Frontend: { wishlistVisibility, attendedVisibility, ... }
+function transformDbPrivacyToFrontend(dbPrivacy: DbPrivacySettings | null): PrivacySettings {
+    if (!dbPrivacy) return DEFAULT_PRIVACY_SETTINGS;
+
+    return {
+        wishlistVisibility: (dbPrivacy.wishlist as PrivacyLevel) || "friends",
+        attendedVisibility: (dbPrivacy.attended as PrivacyLevel) || "public",
+        gonglogVisibility: (dbPrivacy.gonglog as PrivacyLevel) || "public",
+        badgeVisibility: (dbPrivacy.badge as PrivacyLevel) || "public",
+        crewActivityVisibility: (dbPrivacy.crewActivity as PrivacyLevel) || "crew",
+        friendsListVisibility: (dbPrivacy.friendsList as PrivacyLevel) || "friends",
+    };
+}
+
+// Frontend PrivacySettings를 DB PrivacySettings로 변환
+function transformFrontendPrivacyToDb(privacy: PrivacySettings): DbPrivacySettings {
+    return {
+        wishlist: privacy.wishlistVisibility,
+        attended: privacy.attendedVisibility,
+        gonglog: privacy.gonglogVisibility,
+        badge: privacy.badgeVisibility,
+        crewActivity: privacy.crewActivityVisibility,
+        friendsList: privacy.friendsListVisibility,
+    };
+}
+
 export function UserProfileProvider({ children }: { children: ReactNode }) {
     const { mockUserId, isLoggedIn: devIsLoggedIn } = useDevContext();
+    const { user: authUser } = useAuth();
 
-    // 사용자별 프로필 저장소 (userId -> Profile)
-    const [profiles, setProfiles] = useState<Record<string, Omit<MyProfile, "id">>>({});
+    // 실제 인증 사용자가 있으면 Supabase 사용, 없으면 Dev 모드 또는 비로그인
+    const realUserId = authUser?.id;
+    const isRealUser = !!realUserId;
+
+    // Dev 모드에서 mockUserId 사용
+    const devUserId = devIsLoggedIn ? (mockUserId || "user1") : null;
+
+    // 최종 사용자 ID (실제 > Dev > null)
+    const currentUserId = realUserId || devUserId;
+    const isLoggedIn = !!currentUserId;
+
+    // 사용자별 프로필 저장소 (Dev 모드용)
+    const [localProfiles, setLocalProfiles] = useState<Record<string, Omit<MyProfile, "id">>>({});
+    // Supabase에서 로드된 프로필 (실제 사용자용)
+    const [supabaseProfile, setSupabaseProfile] = useState<MyProfile | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isFromSupabase, setIsFromSupabase] = useState(false);
+    const [loadedUserId, setLoadedUserId] = useState<string | null | undefined>(undefined);
 
-    // 현재 로그인한 사용자 ID
-    const currentUserId = mockUserId;
-    const isLoggedIn = devIsLoggedIn;
-
-    // localStorage에서 불러오기
+    // Storage에서 불러오기 (Dev 모드용)
     useEffect(() => {
-        try {
-            const stored = localStorage.getItem(STORAGE_KEY);
-            if (stored) {
-                const parsed = JSON.parse(stored);
-                setProfiles(parsed);
-            }
-        } catch {
-            console.error("Failed to parse user profiles from localStorage");
+        const stored = userProfilesAdapter.get();
+        if (stored) {
+            setLocalProfiles(stored);
         }
         setIsInitialized(true);
     }, []);
 
-    // localStorage에 저장
+    // Storage에 저장 (Dev 모드만)
     useEffect(() => {
-        if (isInitialized) {
-            try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles));
-            } catch {
-                console.error("Failed to save user profiles to localStorage");
-            }
+        if (!isRealUser && isInitialized && Object.keys(localProfiles).length > 0) {
+            userProfilesAdapter.set(localProfiles);
         }
-    }, [profiles, isInitialized]);
+    }, [localProfiles, isInitialized, isRealUser]);
+
+    // 사용자 변경 또는 초기 로드 시 Supabase에서 프로필 로드
+    useEffect(() => {
+        if (loadedUserId !== currentUserId) {
+            // 비로그인 시
+            if (!currentUserId) {
+                setSupabaseProfile(null);
+                setLoadedUserId(currentUserId);
+                setIsFromSupabase(false);
+                return;
+            }
+
+            // 실제 사용자: Supabase에서 로드
+            if (isRealUser && realUserId && authUser) {
+                setIsLoading(true);
+
+                // 사용자가 없으면 생성, 있으면 조회
+                ensureUserExists(authUser)
+                    .then(async (dbUser) => {
+                        // 생성/조회 후 상세 프로필 로드
+                        const profile = await getUserProfileFromDb(realUserId);
+                        if (profile) {
+                            setSupabaseProfile({
+                                id: profile.id,
+                                nickname: profile.nickname,
+                                avatar: profile.profileImage || "🎵",
+                                bio: profile.bio || "",
+                                privacy: transformDbPrivacyToFrontend(profile.privacySettings),
+                            });
+                            setIsFromSupabase(true);
+                        } else {
+                            // 프로필 조회 실패 시 기본값 사용
+                            setSupabaseProfile({
+                                id: realUserId,
+                                nickname: authUser.user_metadata?.full_name || "사용자",
+                                avatar: "🎵",
+                                bio: "",
+                                privacy: DEFAULT_PRIVACY_SETTINGS,
+                            });
+                            setIsFromSupabase(true);
+                        }
+                    })
+                    .catch((error) => {
+                        console.error("[UserProfileContext] Supabase load failed:", error);
+                        // Supabase 실패 시 기본 프로필 사용
+                        setSupabaseProfile({
+                            id: realUserId,
+                            nickname: authUser.user_metadata?.full_name || "사용자",
+                            avatar: "🎵",
+                            bio: "",
+                            privacy: DEFAULT_PRIVACY_SETTINGS,
+                        });
+                        setIsFromSupabase(false);
+                    })
+                    .finally(() => {
+                        setIsLoading(false);
+                        setLoadedUserId(currentUserId);
+                    });
+                return;
+            }
+
+            // Dev 모드: localStorage에서 이미 로드됨
+            setLoadedUserId(currentUserId);
+            setIsFromSupabase(false);
+        }
+    }, [currentUserId, loadedUserId, isRealUser, realUserId, authUser]);
 
     // 현재 사용자의 프로필 가져오기
     const myProfile = useMemo((): MyProfile | null => {
         if (!currentUserId) return null;
 
-        // 저장된 커스텀 프로필이 있으면 사용
-        if (profiles[currentUserId]) {
+        // 실제 사용자: Supabase 프로필 사용
+        if (isRealUser && supabaseProfile) {
+            return supabaseProfile;
+        }
+
+        // Dev 모드: localStorage 또는 Mock 데이터
+        if (localProfiles[currentUserId]) {
             return {
                 id: currentUserId,
                 ...DEFAULT_PROFILE,
-                ...profiles[currentUserId],
+                ...localProfiles[currentUserId],
                 privacy: {
                     ...DEFAULT_PRIVACY_SETTINGS,
-                    ...(profiles[currentUserId].privacy || {}),
+                    ...(localProfiles[currentUserId].privacy || {}),
                 },
             };
         }
@@ -183,20 +302,47 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
             id: currentUserId,
             ...DEFAULT_PROFILE,
         };
-    }, [currentUserId, profiles]);
+    }, [currentUserId, isRealUser, supabaseProfile, localProfiles]);
 
     // 프로필 업데이트
     const updateProfile = useCallback((updates: Partial<Omit<MyProfile, "id">>) => {
         if (!currentUserId) return;
 
-        setProfiles(prev => ({
-            ...prev,
-            [currentUserId]: {
-                ...(prev[currentUserId] || DEFAULT_PROFILE),
-                ...updates,
-            },
-        }));
-    }, [currentUserId]);
+        // Optimistic update
+        if (isRealUser && supabaseProfile) {
+            setSupabaseProfile(prev => prev ? { ...prev, ...updates } : null);
+
+            // Supabase에 저장
+            const dbUpdates: Record<string, unknown> = {};
+            if (updates.nickname !== undefined) dbUpdates.nickname = updates.nickname;
+            if (updates.avatar !== undefined) dbUpdates.avatar_url = updates.avatar;
+            if (updates.bio !== undefined) dbUpdates.bio = updates.bio;
+
+            if (Object.keys(dbUpdates).length > 0) {
+                updateUserProfileInDb(currentUserId, dbUpdates).catch((error) => {
+                    console.error("[UserProfileContext] updateProfile failed:", error);
+                    // 롤백 (재로드)
+                    setLoadedUserId(undefined);
+                });
+            }
+
+            // 프라이버시 설정 별도 업데이트
+            if (updates.privacy) {
+                updatePrivacySettingsInDb(currentUserId, transformFrontendPrivacyToDb(updates.privacy)).catch((error) => {
+                    console.error("[UserProfileContext] updatePrivacy failed:", error);
+                });
+            }
+        } else {
+            // Dev 모드: localStorage
+            setLocalProfiles(prev => ({
+                ...prev,
+                [currentUserId]: {
+                    ...(prev[currentUserId] || DEFAULT_PROFILE),
+                    ...updates,
+                },
+            }));
+        }
+    }, [currentUserId, isRealUser, supabaseProfile]);
 
     // 개별 setter
     const setNickname = useCallback((nickname: string) => {
@@ -215,17 +361,32 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     const updatePrivacy = useCallback((updates: Partial<PrivacySettings>) => {
         if (!currentUserId || !myProfile) return;
 
-        setProfiles(prev => ({
-            ...prev,
-            [currentUserId]: {
-                ...(prev[currentUserId] || DEFAULT_PROFILE),
-                privacy: {
-                    ...(prev[currentUserId]?.privacy || DEFAULT_PRIVACY_SETTINGS),
-                    ...updates,
+        const newPrivacy = {
+            ...myProfile.privacy,
+            ...updates,
+        };
+
+        // Optimistic update
+        if (isRealUser && supabaseProfile) {
+            setSupabaseProfile(prev => prev ? { ...prev, privacy: newPrivacy } : null);
+
+            // Supabase에 저장
+            updatePrivacySettingsInDb(currentUserId, transformFrontendPrivacyToDb(newPrivacy)).catch((error) => {
+                console.error("[UserProfileContext] updatePrivacy failed:", error);
+                // 롤백 (재로드)
+                setLoadedUserId(undefined);
+            });
+        } else {
+            // Dev 모드: localStorage
+            setLocalProfiles(prev => ({
+                ...prev,
+                [currentUserId]: {
+                    ...(prev[currentUserId] || DEFAULT_PROFILE),
+                    privacy: newPrivacy,
                 },
-            },
-        }));
-    }, [currentUserId, myProfile]);
+            }));
+        }
+    }, [currentUserId, myProfile, isRealUser, supabaseProfile]);
 
     // 개별 프라이버시 설정 변경
     const setPrivacySetting = useCallback(<K extends keyof PrivacySettings>(
@@ -273,6 +434,8 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 setPrivacySetting,
                 canViewContent,
                 isInitialized,
+                isFromSupabase,
+                isLoading,
             }}
         >
             {children}

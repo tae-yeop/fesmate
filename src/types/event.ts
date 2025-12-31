@@ -140,8 +140,8 @@ export interface Event {
     endAt?: Date;  // 종료 시간 미정인 경우 null/undefined
     timezone: string; // 기본 "Asia/Seoul"
 
-    // 장소
-    venue: Venue;
+    // 장소 (Supabase에서는 optional로 처리)
+    venue?: Venue;
 
     // 분류
     type: EventType;
@@ -174,9 +174,9 @@ export interface Event {
     // 배지 (UI 표시용)
     badges?: string[];
 
-    // 메타
-    createdAt: Date;
-    updatedAt: Date;
+    // 메타 (Supabase 연동 후 optional)
+    createdAt?: Date;
+    updatedAt?: Date;
 }
 
 /**

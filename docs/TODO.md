@@ -527,6 +527,35 @@
 - [ ] 신고 큐 / 모더레이션
 - [ ] 감사로그 (Audit log)
 
+### 사용자 콘텐츠 등록 (PRD 6.20) [P2] — 📋 기획 완료
+> 상세 기획: `docs/proposals/user-event-registration.md`
+
+**사용자 행사 등록**
+- [ ] 행사 등록 폼 UI (`EventRegistrationModal`)
+- [ ] 장소 검색 API 연동 (카카오/네이버 지도)
+- [ ] 포스터 이미지 업로드
+- [ ] `events` 테이블 `registered_by`, `source` 컬럼 추가
+- [ ] 중복 행사 감지 및 경고
+
+**타임테이블 편집**
+- [ ] 타임테이블 편집 모드 UI
+- [ ] 슬롯 추가/수정/삭제 기능
+- [ ] 수정 제안 제출 플로우 (일반 사용자)
+- [ ] 제안 승인/반려 관리 UI (등록자/관리자)
+- [ ] `timetable_suggestions` 테이블 생성
+
+**셋리스트 편집**
+- [ ] 셋리스트 에디터 UI (`SetlistEditorModal`)
+- [ ] 곡 순서 드래그 앤 드롭
+- [ ] 콜가이드 연동 (곡 → 콜가이드 링크)
+- [ ] `setlists`, `setlist_songs` 테이블 생성
+- [ ] 도움됨 버튼 연동
+
+**품질 관리**
+- [ ] 신뢰도 시스템 (기여 포인트)
+- [ ] 기여자 배지 (리더보드 연동)
+- [ ] 신고/숨김 처리
+
 ---
 
 ## 🔌 백엔드 연동 필요
@@ -553,17 +582,22 @@
 - [ ] WishlistContext Supabase 연동
 - [ ] FollowContext, BlockContext Supabase 연동
 
-**Phase 3: Content**
-- [ ] posts CRUD 쿼리 작성
-- [ ] HelpfulContext, CommentContext Supabase 연동
+**Phase 3: Content** — ✅ 기본 완료
+- [x] reactions, comments, notifications 쿼리 작성 (`src/lib/supabase/queries/`)
+- [x] HelpfulContext Supabase 연동 (로그인 시 DB, 비로그인 시 localStorage)
+- [x] CommentContext Supabase 연동 (UUID 검증으로 Mock/실제 데이터 분리)
+- [x] NotificationContext Supabase 연동 (읽음/삭제 처리)
+- [x] isValidUUID() 유틸리티 (Mock 데이터 ID vs 실제 UUID 구분)
+- [ ] 알림 트리거 연동 (참여 수락/거절 시 알림 생성)
 - [ ] Realtime 구독 설정
 
-**Phase 4: Social**
-- [ ] CrewContext Supabase 연동
-- [ ] ParticipationContext Supabase 연동
+**Phase 4: Social** — ✅ 완료
+- [x] CrewContext Supabase 연동
+- [x] ParticipationContext Supabase 연동
+- [x] PostContext Supabase 연동 (posts.ts 쿼리 함수 + PostProvider)
 
-**Phase 5: Guide**
-- [ ] CallGuideContext Supabase 연동
+**Phase 5: Guide** — ✅ 완료
+- [x] CallGuideContext Supabase 연동 (call-guides.ts 쿼리 함수)
 
 ### 추가 기능
 - [ ] 무한 스크롤 / 페이지네이션
@@ -649,6 +683,13 @@ change_suggestion (id, event_id, diff_fields, before, after, confidence, status)
 ### 4순위: P2 Admin 도구
 - 행사 관리
 - 모더레이션
+
+### 5순위: 사용자 콘텐츠 등록 (PRD 6.20) — 📋 기획 완료
+> 상세 기획: `docs/proposals/user-event-registration.md`
+
+- 사용자 행사 등록
+- 타임테이블 편집 (수정 제안 시스템)
+- 셋리스트 편집
 
 ---
 

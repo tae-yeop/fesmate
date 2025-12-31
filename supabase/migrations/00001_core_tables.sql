@@ -20,7 +20,7 @@ CREATE TABLE venues (
 );
 
 -- 장소명 검색용 인덱스
-CREATE INDEX idx_venues_name ON venues USING gin(to_tsvector('korean', name));
+CREATE INDEX idx_venues_name ON venues USING gin(to_tsvector('simple', name));
 
 COMMENT ON TABLE venues IS '공연장/장소 정보';
 COMMENT ON COLUMN venues.lat IS '위도';
@@ -44,7 +44,7 @@ CREATE TABLE artists (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_artists_name ON artists USING gin(to_tsvector('korean', name));
+CREATE INDEX idx_artists_name ON artists USING gin(to_tsvector('simple', name));
 CREATE INDEX idx_artists_genre ON artists(genre);
 
 COMMENT ON TABLE artists IS '아티스트 정보';
@@ -104,7 +104,7 @@ CREATE INDEX idx_events_start_at ON events(start_at);
 CREATE INDEX idx_events_type ON events(type);
 CREATE INDEX idx_events_status ON events(status);
 CREATE INDEX idx_events_venue ON events(venue_id);
-CREATE INDEX idx_events_title ON events USING gin(to_tsvector('korean', title));
+CREATE INDEX idx_events_title ON events USING gin(to_tsvector('simple', title));
 CREATE INDEX idx_events_type_date ON events(type, start_at);
 
 COMMENT ON TABLE events IS '행사 정보 - 최상위 엔터티';

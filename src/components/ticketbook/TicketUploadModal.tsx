@@ -60,7 +60,7 @@ export function TicketUploadModal({
     return MOCK_EVENTS.filter(
       (e) =>
         e.title.toLowerCase().includes(query) ||
-        e.venue.name.toLowerCase().includes(query)
+        e.venue?.name?.toLowerCase().includes(query)
     );
   }, [eventSearchQuery, attendedEvents]);
 
@@ -319,7 +319,7 @@ export function TicketUploadModal({
                           </div>
                           <div className="text-xs text-gray-500 mt-0.5">
                             {event.startAt.toLocaleDateString("ko-KR")} •{" "}
-                            {event.venue.name}
+                            {event.venue?.name}
                           </div>
                         </button>
                       ))

@@ -11,7 +11,7 @@ import { useHelpful } from "@/lib/helpful-context";
 import { useComment } from "@/lib/comment-context";
 import { PostActionMenu } from "@/components/safety/PostActionMenu";
 import { MapActionSheet } from "@/components/maps";
-import { getDefaultMapApp, openMap } from "@/lib/utils/map-deeplink";
+import { getDefaultMapApp, hasDefaultMapApp, openMap } from "@/lib/utils/map-deeplink";
 import { maskContactInfo } from "@/lib/utils/contact-mask";
 import { MOCK_USERS } from "@/lib/mock-data";
 import { useAuth } from "@/lib/auth-context";
@@ -123,8 +123,8 @@ export function PostDetailModal({ post, isOpen, onClose }: PostDetailModalProps)
 
     const handleOpenMap = () => {
         if (!post.placeText) return;
-        const defaultApp = getDefaultMapApp();
-        if (defaultApp && localStorage.getItem("fesmate_default_map_app")) {
+        if (hasDefaultMapApp()) {
+            const defaultApp = getDefaultMapApp();
             openMap(defaultApp, post.placeText, post.placeHint);
         } else {
             setMapActionSheetOpen(true);

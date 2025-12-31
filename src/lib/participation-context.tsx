@@ -16,6 +16,18 @@ import {
     getActivityStatus,
 } from "@/types/participation";
 import { useDevContext } from "./dev-context";
+import { useAuth } from "./auth-context";
+import { isValidUUID } from "./utils";
+import { createSharedAdapter, DOMAINS } from "./storage";
+import {
+    getReceivedRequests as getReceivedRequestsFromDb,
+    getSentRequests as getSentRequestsFromDb,
+    sendParticipationRequest as sendParticipationRequestInDb,
+    acceptParticipationRequest as acceptParticipationRequestInDb,
+    declineParticipationRequest as declineParticipationRequestInDb,
+    cancelParticipationRequest as cancelParticipationRequestInDb,
+    type ParticipationRequest as DbParticipationRequest,
+} from "./supabase/queries";
 
 // ===== Mock 참여 신청 데이터 =====
 
@@ -128,9 +140,9 @@ export interface ActiveActivity extends ParticipationRequest {
 
 interface ParticipationContextValue {
     /** 현재 사용자 ID */
-    currentUserId: string;
+    currentUserId: string | null;
     /** 참여 신청 보내기 */
-    sendRequest: (input: CreateParticipationInput) => ParticipationRequest;
+    sendRequest: (input: CreateParticipationInput) => ParticipationRequest | null;
     /** 참여 신청 수락 */
     acceptRequest: (requestId: string) => void;
     /** 참여 신청 거절 */
@@ -155,66 +167,170 @@ interface ParticipationContextValue {
     getActiveActivities: () => ActiveActivity[];
     /** 참여 중인 활동 수 */
     getActiveCount: () => number;
+    /** 데이터 소스 표시 */
+    isFromSupabase: boolean;
+    /** 로딩 상태 */
+    isLoading: boolean;
 }
 
 const ParticipationContext = createContext<ParticipationContextValue | null>(null);
 
-const STORAGE_KEY_PARTICIPATION = "fesmate_participation_requests";
+// Storage adapter (전역 공유 데이터) - Dev 모드용
+const participationAdapter = createSharedAdapter<ParticipationRequest[]>({
+    domain: DOMAINS.PARTICIPATION_REQUESTS,
+    dateFields: ["createdAt", "respondedAt", "scheduledAt"],
+});
+
+// DB 타입을 Frontend 타입으로 변환하는 헬퍼
+function transformDbToFrontend(dbReq: DbParticipationRequest): ParticipationRequest {
+    return {
+        id: dbReq.id,
+        applicantId: dbReq.applicantId,
+        postId: dbReq.postId,
+        postAuthorId: dbReq.postAuthorId,
+        message: dbReq.message || undefined,
+        status: dbReq.status,
+        scheduledAt: dbReq.scheduledAt || undefined,
+        activityLocation: dbReq.activityLocation || undefined,
+        createdAt: dbReq.createdAt,
+        respondedAt: dbReq.respondedAt || undefined,
+        // postType은 DB에 없으므로 undefined
+    };
+}
 
 export function ParticipationProvider({ children }: { children: ReactNode }) {
-    const { mockUserId } = useDevContext();
-    const currentUserId = mockUserId || "user1";
+    const { mockUserId, isLoggedIn: isDevLoggedIn } = useDevContext();
+    const { user: authUser } = useAuth();
+
+    // 실제 인증 사용자가 있으면 Supabase 사용, 없으면 Dev 모드
+    const realUserId = authUser?.id;
+    const isRealUser = !!realUserId && isValidUUID(realUserId);
+
+    // Dev 모드에서 mockUserId 사용
+    const devUserId = isDevLoggedIn ? (mockUserId || "user1") : null;
+
+    // 최종 사용자 ID (실제 > Dev > null)
+    const currentUserId = realUserId || devUserId;
 
     const [requests, setRequests] = useState<ParticipationRequest[]>(MOCK_PARTICIPATION_REQUESTS);
-    const [isInitialized, setIsInitialized] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isFromSupabase, setIsFromSupabase] = useState(false);
+    const [loadedUserId, setLoadedUserId] = useState<string | null | undefined>(undefined);
 
-    // localStorage에서 불러오기
+    // 사용자 변경 또는 초기 로드 시 데이터 로드
     useEffect(() => {
-        const stored = localStorage.getItem(STORAGE_KEY_PARTICIPATION);
-        if (stored) {
-            try {
-                const parsed = JSON.parse(stored);
-                setRequests(
-                    parsed.map((r: ParticipationRequest) => ({
-                        ...r,
-                        createdAt: new Date(r.createdAt),
-                        respondedAt: r.respondedAt ? new Date(r.respondedAt) : undefined,
-                    }))
-                );
-            } catch {
-                console.error("Failed to parse participation requests from localStorage");
+        // 사용자가 변경되었거나 처음 로드하는 경우
+        if (loadedUserId !== currentUserId) {
+            // 비로그인 시에는 Mock 데이터
+            if (!currentUserId) {
+                setRequests(MOCK_PARTICIPATION_REQUESTS);
+                setLoadedUserId(currentUserId);
+                setIsFromSupabase(false);
+                return;
             }
-        }
-        setIsInitialized(true);
-    }, []);
 
-    // localStorage에 저장
-    useEffect(() => {
-        if (isInitialized) {
-            localStorage.setItem(STORAGE_KEY_PARTICIPATION, JSON.stringify(requests));
+            // 실제 사용자: Supabase에서 로드
+            if (isRealUser && realUserId) {
+                setIsLoading(true);
+                Promise.all([
+                    getReceivedRequestsFromDb(realUserId),
+                    getSentRequestsFromDb(realUserId),
+                ])
+                    .then(([received, sent]) => {
+                        // 중복 제거하여 병합
+                        const allRequestsMap = new Map<string, ParticipationRequest>();
+                        [...received, ...sent].forEach(r => {
+                            allRequestsMap.set(r.id, transformDbToFrontend(r));
+                        });
+                        setRequests(Array.from(allRequestsMap.values()));
+                        setIsFromSupabase(true);
+                    })
+                    .catch((error) => {
+                        console.error("[ParticipationContext] Supabase load failed:", error);
+                        // Supabase 실패 시 localStorage에서 로드
+                        const stored = participationAdapter.get();
+                        if (stored) setRequests(stored);
+                        setIsFromSupabase(false);
+                    })
+                    .finally(() => {
+                        setIsLoading(false);
+                        setLoadedUserId(currentUserId);
+                    });
+                return;
+            }
+
+            // Dev 모드: localStorage에서 로드
+            const stored = participationAdapter.get();
+            if (stored) {
+                setRequests(stored);
+            }
+            setLoadedUserId(currentUserId);
+            setIsFromSupabase(false);
         }
-    }, [requests, isInitialized]);
+    }, [currentUserId, loadedUserId, isRealUser, realUserId]);
+
+    // localStorage에 저장 (Dev 모드만)
+    useEffect(() => {
+        if (isRealUser || loadedUserId !== currentUserId) return;
+        if (currentUserId) {
+            participationAdapter.set(requests);
+        }
+    }, [requests, isRealUser, currentUserId, loadedUserId]);
 
     // 참여 신청 보내기
     const sendRequest = useCallback(
-        (input: CreateParticipationInput): ParticipationRequest => {
+        (input: CreateParticipationInput): ParticipationRequest | null => {
+            if (!currentUserId) return null;
+
             const newRequest: ParticipationRequest = {
                 id: `pr_${Date.now()}`,
                 applicantId: currentUserId,
                 postId: input.postId,
                 postAuthorId: input.postAuthorId,
+                postType: input.postType,
                 message: input.message,
                 status: "pending",
                 createdAt: new Date(),
             };
+
+            // Optimistic update
             setRequests((prev) => [...prev, newRequest]);
+
+            // 실제 사용자: Supabase에 저장
+            if (isRealUser && realUserId && isValidUUID(input.postId) && isValidUUID(input.postAuthorId)) {
+                sendParticipationRequestInDb(realUserId, {
+                    postId: input.postId,
+                    postAuthorId: input.postAuthorId,
+                    message: input.message,
+                })
+                    .then((dbReq) => {
+                        // 실제 ID로 교체
+                        setRequests((prev) =>
+                            prev.map((r) =>
+                                r.id === newRequest.id
+                                    ? { ...transformDbToFrontend(dbReq), postType: input.postType }
+                                    : r
+                            )
+                        );
+                    })
+                    .catch((error) => {
+                        console.error("[ParticipationContext] sendRequest failed:", error);
+                        // 롤백
+                        setRequests((prev) => prev.filter((r) => r.id !== newRequest.id));
+                    });
+            }
+
             return newRequest;
         },
-        [currentUserId]
+        [currentUserId, isRealUser, realUserId]
     );
 
     // 참여 신청 수락
     const acceptRequest = useCallback((requestId: string) => {
+        const existingRequest = requests.find((r) => r.id === requestId);
+        if (!existingRequest) return;
+
+        // Optimistic update
         setRequests((prev) =>
             prev.map((r) =>
                 r.id === requestId
@@ -222,10 +338,27 @@ export function ParticipationProvider({ children }: { children: ReactNode }) {
                     : r
             )
         );
-    }, []);
+
+        // 실제 사용자: Supabase에 저장
+        if (isRealUser && isValidUUID(requestId)) {
+            acceptParticipationRequestInDb(requestId).catch((error) => {
+                console.error("[ParticipationContext] acceptRequest failed:", error);
+                // 롤백
+                setRequests((prev) =>
+                    prev.map((r) =>
+                        r.id === requestId ? existingRequest : r
+                    )
+                );
+            });
+        }
+    }, [requests, isRealUser]);
 
     // 참여 신청 거절
     const declineRequest = useCallback((requestId: string) => {
+        const existingRequest = requests.find((r) => r.id === requestId);
+        if (!existingRequest) return;
+
+        // Optimistic update
         setRequests((prev) =>
             prev.map((r) =>
                 r.id === requestId
@@ -233,10 +366,27 @@ export function ParticipationProvider({ children }: { children: ReactNode }) {
                     : r
             )
         );
-    }, []);
+
+        // 실제 사용자: Supabase에 저장
+        if (isRealUser && isValidUUID(requestId)) {
+            declineParticipationRequestInDb(requestId).catch((error) => {
+                console.error("[ParticipationContext] declineRequest failed:", error);
+                // 롤백
+                setRequests((prev) =>
+                    prev.map((r) =>
+                        r.id === requestId ? existingRequest : r
+                    )
+                );
+            });
+        }
+    }, [requests, isRealUser]);
 
     // 참여 신청 취소
     const cancelRequest = useCallback((requestId: string) => {
+        const existingRequest = requests.find((r) => r.id === requestId && r.status === "pending");
+        if (!existingRequest) return;
+
+        // Optimistic update
         setRequests((prev) =>
             prev.map((r) =>
                 r.id === requestId && r.status === "pending"
@@ -244,17 +394,32 @@ export function ParticipationProvider({ children }: { children: ReactNode }) {
                     : r
             )
         );
-    }, []);
+
+        // 실제 사용자: Supabase에 저장
+        if (isRealUser && isValidUUID(requestId)) {
+            cancelParticipationRequestInDb(requestId).catch((error) => {
+                console.error("[ParticipationContext] cancelRequest failed:", error);
+                // 롤백
+                setRequests((prev) =>
+                    prev.map((r) =>
+                        r.id === requestId ? existingRequest : r
+                    )
+                );
+            });
+        }
+    }, [requests, isRealUser]);
 
     // 받은 참여 신청 목록
-    const getReceivedRequests = useCallback(() => {
+    const getReceivedRequestsFn = useCallback(() => {
+        if (!currentUserId) return [];
         return requests
             .filter((r) => r.postAuthorId === currentUserId && r.status !== "canceled")
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }, [requests, currentUserId]);
 
     // 보낸 참여 신청 목록
-    const getSentRequests = useCallback(() => {
+    const getSentRequestsFn = useCallback(() => {
+        if (!currentUserId) return [];
         return requests
             .filter((r) => r.applicantId === currentUserId)
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -263,6 +428,7 @@ export function ParticipationProvider({ children }: { children: ReactNode }) {
     // 특정 글에 대한 내 신청 상태
     const getMyRequestStatus = useCallback(
         (postId: string): ParticipationStatus | null => {
+            if (!currentUserId) return null;
             const request = requests.find(
                 (r) => r.applicantId === currentUserId && r.postId === postId
             );
@@ -272,8 +438,9 @@ export function ParticipationProvider({ children }: { children: ReactNode }) {
     );
 
     // 특정 글에 대한 내 신청
-    const getMyRequest = useCallback(
+    const getMyRequestFn = useCallback(
         (postId: string): ParticipationRequest | undefined => {
+            if (!currentUserId) return undefined;
             return requests.find(
                 (r) => r.applicantId === currentUserId && r.postId === postId
             );
@@ -282,21 +449,23 @@ export function ParticipationProvider({ children }: { children: ReactNode }) {
     );
 
     // 받은 대기 중인 신청 수
-    const getReceivedPendingCount = useCallback(() => {
+    const getReceivedPendingCountFn = useCallback(() => {
+        if (!currentUserId) return 0;
         return requests.filter(
             (r) => r.postAuthorId === currentUserId && r.status === "pending"
         ).length;
     }, [requests, currentUserId]);
 
     // 보낸 대기 중인 신청 수
-    const getSentPendingCount = useCallback(() => {
+    const getSentPendingCountFn = useCallback(() => {
+        if (!currentUserId) return 0;
         return requests.filter(
             (r) => r.applicantId === currentUserId && r.status === "pending"
         ).length;
     }, [requests, currentUserId]);
 
     // 특정 글에 온 신청 목록
-    const getRequestsForPost = useCallback(
+    const getRequestsForPostFn = useCallback(
         (postId: string): ParticipationRequest[] => {
             return requests
                 .filter((r) => r.postId === postId && r.status !== "canceled")
@@ -307,6 +476,7 @@ export function ParticipationProvider({ children }: { children: ReactNode }) {
 
     // 참여 중인 활동 목록 (수락된 것만, 예정 시간순)
     const getActiveActivities = useCallback((): ActiveActivity[] => {
+        if (!currentUserId) return [];
         const now = new Date();
         return requests
             .filter(
@@ -332,6 +502,7 @@ export function ParticipationProvider({ children }: { children: ReactNode }) {
 
     // 참여 중인 활동 수 (완료되지 않은 것만)
     const getActiveCount = useCallback((): number => {
+        if (!currentUserId) return 0;
         const now = new Date();
         return requests.filter((r) => {
             if (r.applicantId !== currentUserId || r.status !== "accepted") return false;
@@ -348,15 +519,17 @@ export function ParticipationProvider({ children }: { children: ReactNode }) {
                 acceptRequest,
                 declineRequest,
                 cancelRequest,
-                getReceivedRequests,
-                getSentRequests,
+                getReceivedRequests: getReceivedRequestsFn,
+                getSentRequests: getSentRequestsFn,
                 getMyRequestStatus,
-                getMyRequest,
-                getReceivedPendingCount,
-                getSentPendingCount,
-                getRequestsForPost,
+                getMyRequest: getMyRequestFn,
+                getReceivedPendingCount: getReceivedPendingCountFn,
+                getSentPendingCount: getSentPendingCountFn,
+                getRequestsForPost: getRequestsForPostFn,
                 getActiveActivities,
                 getActiveCount,
+                isFromSupabase,
+                isLoading,
             }}
         >
             {children}

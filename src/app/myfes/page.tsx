@@ -255,7 +255,7 @@ export default function MyFesPage() {
         const map = new Map<string, number>();
         selectedYearEvents.forEach(event => {
             // 주소에서 시/도 추출 (예: "서울특별시 강남구..." → "서울")
-            const address = event.venue.address;
+            const address = event.venue?.address || "";
             let region = "기타";
             if (address.includes("서울")) region = "서울";
             else if (address.includes("부산")) region = "부산";
@@ -1397,7 +1397,7 @@ function GonglogCard({ event }: { event: TimelineEvent }) {
                 <h4 className="font-medium text-sm line-clamp-1">{event.title}</h4>
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                     <MapPin className="h-3 w-3" />
-                    {event.venue.name}
+                    {event.venue?.name}
                 </p>
             </div>
 
@@ -1524,7 +1524,7 @@ function TimelineCard({
                     </p>
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <MapPin className="h-3 w-3" />
-                        {event.venue.name}
+                        {event.venue?.name}
                     </p>
 
                     {/* 내가 남긴 것 */}

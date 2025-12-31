@@ -81,7 +81,7 @@ CREATE INDEX idx_posts_created ON posts(created_at DESC);
 CREATE INDEX idx_posts_expires ON posts(expires_at) WHERE expires_at IS NOT NULL;
 CREATE INDEX idx_posts_event_type_created ON posts(event_id, type, created_at DESC);
 CREATE INDEX idx_posts_active ON posts(event_id, created_at DESC) WHERE status = 'ACTIVE';
-CREATE INDEX idx_posts_content ON posts USING gin(to_tsvector('korean', content));
+CREATE INDEX idx_posts_content ON posts USING gin(to_tsvector('simple', content));
 
 COMMENT ON TABLE posts IS '글 (실시간 제보, 커뮤니티, 후기 등)';
 COMMENT ON COLUMN posts.type IS '글 타입: gate/md/facility/safety (실시간), companion/taxi/meal 등 (커뮤니티), review/video (기록)';

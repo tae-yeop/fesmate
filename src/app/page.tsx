@@ -104,7 +104,7 @@ export default function Home() {
                                         {event.title}
                                     </h3>
                                     <p className="text-xs text-muted-foreground">
-                                        {event.venue.name}
+                                        {event.venue?.name}
                                     </p>
                                 </div>
                                 <div className="flex items-center justify-center h-10 w-10 rounded-full bg-primary text-primary-foreground">

@@ -42,6 +42,8 @@ export interface ParticipationRequest {
 export interface CreateParticipationInput {
     postId: string;
     postAuthorId: string;
+    /** 글 타입 (companion, taxi, meal 등) - UI 표시용 */
+    postType?: string;
     message?: string;
 }
 

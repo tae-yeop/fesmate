@@ -138,7 +138,7 @@ export function EventCard({
                         </div>
                         <div className="flex items-center">
                             <MapPin className="mr-1 h-3 w-3" />
-                            <span className="line-clamp-1">{event.venue.name}</span>
+                            <span className="line-clamp-1">{event.venue?.name}</span>
                         </div>
                     </div>
 

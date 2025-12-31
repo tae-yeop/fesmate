@@ -6,6 +6,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   ReactNode,
 } from "react";
 import { useDevContext } from "./dev-context";
@@ -19,6 +20,7 @@ import {
   serializeTicketBook,
   deserializeTicketBook,
 } from "@/types/ticketbook";
+import { createUserAdapter, DOMAINS } from "./storage";
 
 interface TicketBookContextType {
   // 티켓 목록
@@ -47,8 +49,11 @@ const TicketBookContext = createContext<TicketBookContextType | undefined>(
   undefined
 );
 
-// 사용자별 storage key 생성
-const getStorageKey = (userId: string) => `fesmate_ticketbook_${userId}`;
+// Storage adapter factory (userId 기반)
+// SerializedTicketBook을 저장하고 읽음 (Date 직렬화된 형태)
+const createTicketBookAdapter = createUserAdapter<SerializedTicketBook>({
+  domain: DOMAINS.TICKETBOOK,
+});
 
 // 기본 티켓북 상태
 const DEFAULT_TICKETBOOK: TicketBook = {
@@ -122,58 +127,52 @@ export function TicketBookProvider({ children }: { children: ReactNode }) {
     undefined
   );
 
-  // 사용자 변경 또는 초기 로드 시 localStorage에서 로드
+  // Storage adapter (userId 변경 시 재생성)
+  const ticketBookAdapter = useMemo(
+    () => currentUserId ? createTicketBookAdapter(currentUserId) : null,
+    [currentUserId]
+  );
+
+  // 사용자 변경 또는 초기 로드 시 storage에서 로드
   useEffect(() => {
     if (loadedUserId !== currentUserId) {
       // 비로그인 시에는 빈 데이터
-      if (!currentUserId) {
+      if (!currentUserId || !ticketBookAdapter) {
         setTicketBook(DEFAULT_TICKETBOOK);
         setLoadedUserId(currentUserId);
         setIsLoaded(true);
         return;
       }
 
-      try {
-        const key = getStorageKey(currentUserId);
-        const saved = localStorage.getItem(key);
+      const saved = ticketBookAdapter.get();
 
-        if (saved) {
-          const parsed: SerializedTicketBook = JSON.parse(saved);
-          setTicketBook(deserializeTicketBook(parsed));
+      if (saved) {
+        setTicketBook(deserializeTicketBook(saved));
+      } else {
+        // 저장된 데이터가 없으면 user1에게만 Mock 데이터 제공
+        if (currentUserId === "user1") {
+          setTicketBook({
+            tickets: MOCK_TICKETS,
+            sortBy: "date",
+            sortOrder: "desc",
+          });
         } else {
-          // 저장된 데이터가 없으면 user1에게만 Mock 데이터 제공
-          if (currentUserId === "user1") {
-            setTicketBook({
-              tickets: MOCK_TICKETS,
-              sortBy: "date",
-              sortOrder: "desc",
-            });
-          } else {
-            setTicketBook(DEFAULT_TICKETBOOK);
-          }
+          setTicketBook(DEFAULT_TICKETBOOK);
         }
-      } catch (e) {
-        console.error("Failed to load ticketbook from localStorage:", e);
-        setTicketBook(DEFAULT_TICKETBOOK);
       }
 
       setLoadedUserId(currentUserId);
       setIsLoaded(true);
     }
-  }, [currentUserId, loadedUserId]);
+  }, [currentUserId, loadedUserId, ticketBookAdapter]);
 
-  // localStorage에 저장
+  // Storage에 저장
   useEffect(() => {
-    if (!isLoaded || loadedUserId !== currentUserId || !currentUserId) return;
+    if (!isLoaded || loadedUserId !== currentUserId || !ticketBookAdapter) return;
 
-    try {
-      const key = getStorageKey(currentUserId);
-      const serialized = serializeTicketBook(ticketBook);
-      localStorage.setItem(key, JSON.stringify(serialized));
-    } catch (e) {
-      console.error("Failed to save ticketbook to localStorage:", e);
-    }
-  }, [ticketBook, isLoaded, currentUserId, loadedUserId]);
+    const serialized = serializeTicketBook(ticketBook);
+    ticketBookAdapter.set(serialized);
+  }, [ticketBook, isLoaded, currentUserId, loadedUserId, ticketBookAdapter]);
 
   // 티켓 추가
   const addTicket = useCallback((input: TicketInput): Ticket => {

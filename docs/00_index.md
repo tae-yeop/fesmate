@@ -1,6 +1,6 @@
 # docs index (v0.5)
 
-**Last updated:** 2025-12-23
+**Last updated:** 2025-12-25
 
 이 폴더는 FesMate 문서를 "한 문서 = 한 역할"로 관리하기 위한 문서 지도입니다.
 
@@ -9,6 +9,7 @@
 - UX/IA: `UX_IA_fesmate_v0.5.md`
 - 요약(온보딩): `fes_app_planning_summary_v0.5.md`
 - 기술 설계(변경 잦음): `tech/*`
+- 기획 제안(신규 기능): `proposals/*`
 - 정책/운영: `policy/*`
 
 ## 문서 규칙(간단)
@@ -35,6 +36,12 @@
 | 문서 | 설명 |
 |------|------|
 | `policy/call-guide-moderation.md` | 콜가이드 악용 방지 및 모더레이션 정책 |
+
+## Proposals (기획 제안)
+| 문서 | 설명 |
+|------|------|
+| `proposals/user-event-registration.md` | 사용자 행사 등록, 타임테이블 편집, 셋리스트 편집 (PRD 6.20) |
+| `proposals/post-type-restructure.md` | 글 타입 구조 개선 제안 |
 
 ## ADR
 - `adr/` — 결정 기록(예: LIVE↔RECAP 전환 규칙, 상태 모델 변경 등)

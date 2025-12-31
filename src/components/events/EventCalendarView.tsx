@@ -36,7 +36,7 @@ export function EventCalendarView({ events }: EventCalendarViewProps) {
 
     // 팔로우하는 사용자들의 찜 목록 통합
     const followingWishlistEventIds = useMemo(() => {
-        if (!isLoggedIn) return new Set<string>();
+        if (!isLoggedIn || !currentUserId) return new Set<string>();
 
         const followingUsers = getFollowing(currentUserId);
         const eventIds = new Set<string>();
@@ -577,7 +577,7 @@ export function EventCalendarView({ events }: EventCalendarViewProps) {
                                                 <span>{formatTime(event.startAt)}</span>
                                                 <span className="flex items-center gap-0.5">
                                                     <MapPin className="h-3 w-3" />
-                                                    {event.venue.name}
+                                                    {event.venue?.name}
                                                 </span>
                                             </div>
                                         </div>
