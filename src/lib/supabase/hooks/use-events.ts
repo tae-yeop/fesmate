@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Event } from "@/types/event";
 import { getEvents, getEventById, EventQueryOptions } from "../queries/events";
 import { MOCK_EVENTS } from "@/lib/mock-data";
+import { isValidUUID } from "@/lib/utils";
 
 interface UseEventsOptions extends EventQueryOptions {
     /** 초기 로드 건너뛰기 */
@@ -110,6 +111,15 @@ export function useEvent(eventId: string | null): UseEventResult {
 
         setIsLoading(true);
         setError(null);
+
+        // Mock 이벤트 ID(e1, e2 등)는 Supabase 호출 건너뛰고 바로 Mock에서 찾기
+        if (!isValidUUID(eventId)) {
+            const mockEvent = MOCK_EVENTS.find((e) => e.id === eventId) ?? null;
+            setEvent(mockEvent);
+            setIsFromSupabase(false);
+            setIsLoading(false);
+            return;
+        }
 
         try {
             const data = await getEventById(eventId);

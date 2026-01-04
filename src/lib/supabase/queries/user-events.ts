@@ -83,6 +83,7 @@ export async function getAttendedEventIds(userId: string): Promise<string[]> {
 
 /**
  * 찜 토글
+ * UPSERT 대신 조건부 INSERT/UPDATE 사용 (RLS 정책 호환성)
  */
 export async function toggleUserWishlist(
     userId: string,
@@ -91,29 +92,48 @@ export async function toggleUserWishlist(
     const supabase = createClient();
 
     // 현재 상태 조회
-    const { data: existing } = await supabase
+    const { data: existing, error: selectError } = await supabase
         .from("user_events")
-        .select("is_wishlist")
+        .select("is_wishlist, is_attended")
         .eq("user_id", userId)
         .eq("event_id", eventId)
-        .single();
+        .maybeSingle();
+
+    if (selectError) {
+        console.error("[toggleUserWishlist] Select error:", selectError.message, "code:", selectError.code, "details:", selectError.details);
+        throw selectError;
+    }
 
     const newWishlistState = !(existing?.is_wishlist ?? false);
 
-    // upsert로 업데이트/생성
-    const { error } = await supabase.from("user_events").upsert(
-        {
+    if (existing) {
+        // 기존 레코드가 있으면 UPDATE
+        const { error } = await supabase
+            .from("user_events")
+            .update({
+                is_wishlist: newWishlistState,
+                updated_at: new Date().toISOString(),
+            })
+            .eq("user_id", userId)
+            .eq("event_id", eventId);
+
+        if (error) {
+            console.error("[toggleUserWishlist] Update error:", error);
+            throw error;
+        }
+    } else {
+        // 새 레코드면 INSERT
+        const { error } = await supabase.from("user_events").insert({
             user_id: userId,
             event_id: eventId,
             is_wishlist: newWishlistState,
-            updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,event_id" }
-    );
+            is_attended: false,
+        });
 
-    if (error) {
-        console.error("[toggleUserWishlist] Error:", error);
-        throw error;
+        if (error) {
+            console.error("[toggleUserWishlist] Insert error:", error);
+            throw error;
+        }
     }
 
     return newWishlistState;
@@ -121,6 +141,7 @@ export async function toggleUserWishlist(
 
 /**
  * 다녀옴 토글
+ * UPSERT 대신 조건부 INSERT/UPDATE 사용 (RLS 정책 호환성)
  */
 export async function toggleUserAttended(
     userId: string,
@@ -129,29 +150,48 @@ export async function toggleUserAttended(
     const supabase = createClient();
 
     // 현재 상태 조회
-    const { data: existing } = await supabase
+    const { data: existing, error: selectError } = await supabase
         .from("user_events")
-        .select("is_attended")
+        .select("is_wishlist, is_attended")
         .eq("user_id", userId)
         .eq("event_id", eventId)
-        .single();
+        .maybeSingle();
+
+    if (selectError) {
+        console.error("[toggleUserAttended] Select error:", selectError);
+        throw selectError;
+    }
 
     const newAttendedState = !(existing?.is_attended ?? false);
 
-    // upsert로 업데이트/생성
-    const { error } = await supabase.from("user_events").upsert(
-        {
+    if (existing) {
+        // 기존 레코드가 있으면 UPDATE
+        const { error } = await supabase
+            .from("user_events")
+            .update({
+                is_attended: newAttendedState,
+                updated_at: new Date().toISOString(),
+            })
+            .eq("user_id", userId)
+            .eq("event_id", eventId);
+
+        if (error) {
+            console.error("[toggleUserAttended] Update error:", error);
+            throw error;
+        }
+    } else {
+        // 새 레코드면 INSERT
+        const { error } = await supabase.from("user_events").insert({
             user_id: userId,
             event_id: eventId,
+            is_wishlist: false,
             is_attended: newAttendedState,
-            updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,event_id" }
-    );
+        });
 
-    if (error) {
-        console.error("[toggleUserAttended] Error:", error);
-        throw error;
+        if (error) {
+            console.error("[toggleUserAttended] Insert error:", error);
+            throw error;
+        }
     }
 
     return newAttendedState;
@@ -159,6 +199,7 @@ export async function toggleUserAttended(
 
 /**
  * 찜 상태 설정 (토글이 아닌 명시적 설정)
+ * UPSERT 대신 조건부 INSERT/UPDATE 사용 (RLS 정책 호환성)
  */
 export async function setWishlist(
     userId: string,
@@ -167,24 +208,51 @@ export async function setWishlist(
 ): Promise<void> {
     const supabase = createClient();
 
-    const { error } = await supabase.from("user_events").upsert(
-        {
+    // 먼저 존재 여부 확인
+    const { data: existing, error: selectError } = await supabase
+        .from("user_events")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("event_id", eventId)
+        .maybeSingle();
+
+    if (selectError) {
+        console.error("[setWishlist] Select error:", selectError);
+        throw selectError;
+    }
+
+    if (existing) {
+        const { error } = await supabase
+            .from("user_events")
+            .update({
+                is_wishlist: isWishlist,
+                updated_at: new Date().toISOString(),
+            })
+            .eq("user_id", userId)
+            .eq("event_id", eventId);
+
+        if (error) {
+            console.error("[setWishlist] Update error:", error);
+            throw error;
+        }
+    } else {
+        const { error } = await supabase.from("user_events").insert({
             user_id: userId,
             event_id: eventId,
             is_wishlist: isWishlist,
-            updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,event_id" }
-    );
+            is_attended: false,
+        });
 
-    if (error) {
-        console.error("[setWishlist] Error:", error);
-        throw error;
+        if (error) {
+            console.error("[setWishlist] Insert error:", error);
+            throw error;
+        }
     }
 }
 
 /**
  * 다녀옴 상태 설정 (토글이 아닌 명시적 설정)
+ * UPSERT 대신 조건부 INSERT/UPDATE 사용 (RLS 정책 호환성)
  */
 export async function setAttended(
     userId: string,
@@ -193,18 +261,44 @@ export async function setAttended(
 ): Promise<void> {
     const supabase = createClient();
 
-    const { error } = await supabase.from("user_events").upsert(
-        {
+    // 먼저 존재 여부 확인
+    const { data: existing, error: selectError } = await supabase
+        .from("user_events")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("event_id", eventId)
+        .maybeSingle();
+
+    if (selectError) {
+        console.error("[setAttended] Select error:", selectError);
+        throw selectError;
+    }
+
+    if (existing) {
+        const { error } = await supabase
+            .from("user_events")
+            .update({
+                is_attended: isAttended,
+                updated_at: new Date().toISOString(),
+            })
+            .eq("user_id", userId)
+            .eq("event_id", eventId);
+
+        if (error) {
+            console.error("[setAttended] Update error:", error);
+            throw error;
+        }
+    } else {
+        const { error } = await supabase.from("user_events").insert({
             user_id: userId,
             event_id: eventId,
+            is_wishlist: false,
             is_attended: isAttended,
-            updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,event_id" }
-    );
+        });
 
-    if (error) {
-        console.error("[setAttended] Error:", error);
-        throw error;
+        if (error) {
+            console.error("[setAttended] Insert error:", error);
+            throw error;
+        }
     }
 }

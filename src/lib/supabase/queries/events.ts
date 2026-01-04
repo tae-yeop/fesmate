@@ -122,7 +122,7 @@ export async function getEventById(eventId: string): Promise<Event | null> {
             // Not found
             return null;
         }
-        console.error("Failed to fetch event:", error);
+        console.error("Failed to fetch event:", error.message, "code:", error.code, "details:", error.details);
         throw error;
     }
 

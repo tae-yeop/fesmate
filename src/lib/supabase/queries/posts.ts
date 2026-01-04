@@ -621,3 +621,45 @@ export async function deletePostImages(postId: string): Promise<void> {
         throw error;
     }
 }
+
+/**
+ * 사용자별 글 개수 통계 조회
+ * - 배지 조건 계산에 사용
+ */
+export interface PostCountStats {
+    totalCount: number;
+    reportCount: number;
+}
+
+export async function getPostCountByUser(userId: string): Promise<PostCountStats> {
+    const supabase = createClient();
+
+    // 전체 글 개수
+    const { count: totalCount, error: totalError } = await supabase
+        .from("posts")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId);
+
+    if (totalError) {
+        console.error("[getPostCountByUser] Total count error:", totalError);
+        // 에러 시 0 반환 (폴백)
+        return { totalCount: 0, reportCount: 0 };
+    }
+
+    // 실시간 제보 글 개수 (gate, md, facility, safety)
+    const { count: reportCount, error: reportError } = await supabase
+        .from("posts")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .in("type", ["gate", "md", "facility", "safety"]);
+
+    if (reportError) {
+        console.error("[getPostCountByUser] Report count error:", reportError);
+        return { totalCount: totalCount || 0, reportCount: 0 };
+    }
+
+    return {
+        totalCount: totalCount || 0,
+        reportCount: reportCount || 0,
+    };
+}

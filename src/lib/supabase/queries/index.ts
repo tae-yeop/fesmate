@@ -79,6 +79,7 @@ export {
     getPost,
     getHubFeed,
     getPostImages,
+    getPostCountByUser,
     // Posts Mutation
     createPost,
     updatePost,
@@ -92,6 +93,7 @@ export {
     // Types
     type CreatePostInput,
     type UpdatePostInput,
+    type PostCountStats,
 } from "./posts";
 
 export {
@@ -190,6 +192,68 @@ export {
     type CreateParticipationInput,
 } from "./participation";
 
+// My Timetable (슬롯 마크, 커스텀 이벤트)
+export {
+    // Slot Marks
+    getUserSlotMarks,
+    getAllUserSlotMarks,
+    setSlotMark,
+    deleteSlotMark,
+    // Custom Events
+    getCustomEvents,
+    getAllCustomEvents,
+    createCustomEvent,
+    updateCustomEvent,
+    deleteCustomEvent,
+    // Types
+    type SlotMark,
+    type SlotMarkType,
+    type CustomEvent,
+    type CustomEventType,
+} from "./my-timetable";
+
+// Badges (배지)
+export {
+    getUserBadges as getUserBadgesDb,
+    hasBadge as hasBadgeDb,
+    awardBadge,
+    awardBadges,
+    updateFeaturedBadges,
+    getFeaturedBadges,
+    type UserBadge as DbUserBadge,
+} from "./badges";
+
+// Tickets (티켓북)
+export {
+    getUserTickets,
+    getTicket as getTicketById,
+    getTicketsByEvent as getTicketsByEventId,
+    createTicket,
+    updateTicket,
+    deleteTicket,
+    type Ticket as DbTicket,
+    type TicketImage as DbTicketImage,
+    type CreateTicketInput as DbCreateTicketInput,
+    type UpdateTicketInput as DbUpdateTicketInput,
+} from "./tickets";
+
+// Companion Requests (사용자 간 1:1 동행 제안)
+export {
+    getReceivedCompanionRequests,
+    getSentCompanionRequests,
+    getAllCompanionRequests,
+    getCompanionRequestStatus,
+    getReceivedPendingCompanionCount,
+    getCompanionsForEvent,
+    sendCompanionRequest,
+    acceptCompanionRequest,
+    declineCompanionRequest,
+    cancelCompanionRequest,
+    type CompanionRequest as DbCompanionRequest,
+    type CompanionRequestStatus as DbCompanionRequestStatus,
+    type CreateCompanionRequestInput as DbCreateCompanionRequestInput,
+} from "./companions";
+
 // Phase 5: Guide
 export {
     // Songs
@@ -223,3 +287,58 @@ export {
     type CreateSongInput,
     type CreateCallGuideEntryInput,
 } from "./call-guides";
+
+// Leaderboard (리더보드)
+export {
+    getLeaderboardStats,
+    getLeaderboard as getLeaderboardDb,
+    getUserRanking as getUserRankingDb,
+    type UserActivityStats,
+} from "./leaderboard";
+
+// Admin: Reports (신고 관리)
+export {
+    submitReport,
+    getReports,
+    getReportById,
+    updateReportStatus,
+    getReportStats,
+    getReportsAgainstUser,
+    getReportsByUser,
+    getPendingReportCount,
+    type DbReport,
+    type ReportWithDetails,
+    type ReportQueryOptions,
+    type ReportStats,
+} from "./reports";
+
+// Admin: Management (관리자 도구)
+export {
+    // Audit Logs
+    logAdminAction,
+    getAuditLogs,
+    ACTION_TYPE_LABELS,
+    // User Management
+    suspendUser,
+    unsuspendUser,
+    warnUser,
+    getUsers,
+    getUserById,
+    // Content Management
+    adminDeletePost,
+    adminDeleteComment,
+    getPosts,
+    getComments,
+    // Event Management
+    updateEventStatus,
+    updateEvent,
+    deleteEvent,
+    // Dashboard
+    getAdminDashboardStats,
+    // Types
+    type AdminActionType,
+    type AuditLog,
+    type AuditLogQueryOptions,
+    type AdminDashboardStats,
+    type UserWithSuspension,
+} from "./admin";
