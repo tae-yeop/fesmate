@@ -79,6 +79,11 @@ src/
     ├── database.ts         # Supabase DB 타입 (Tables, TablesInsert, TablesUpdate)
     └── ...                 # notification, report, comment, follow 등
 
+e2e/                            # Playwright E2E 테스트
+├── navigation.spec.ts          # 네비게이션 테스트
+├── community.spec.ts           # 커뮤니티 테스트
+└── supabase-integration.spec.ts # Supabase 연동 테스트
+
 supabase/
 └── migrations/             # PostgreSQL 마이그레이션 파일 (6개)
     ├── 00001_core_tables.sql      # venues, artists, events, stages, slots
@@ -179,6 +184,71 @@ npm start
 
 # 린트
 npm run lint
+
+# E2E 테스트
+npm run test:e2e          # 헤드리스 모드
+npm run test:e2e:ui       # UI 모드 (브라우저 표시)
+```
+
+## E2E 테스트
+
+Playwright 기반 E2E 테스트가 `e2e/` 폴더에 구현되어 있습니다.
+
+### 테스트 파일 구조
+
+```
+e2e/
+├── navigation.spec.ts          # 네비게이션 및 행사 페이지 테스트
+├── community.spec.ts           # 커뮤니티 페이지 테스트
+└── supabase-integration.spec.ts # Supabase 연동 기능 테스트
+```
+
+### 테스트 실행
+
+```bash
+# 헤드리스 모드 (CI용)
+npm run test:e2e
+
+# UI 모드 (디버깅용, 브라우저 표시)
+npm run test:e2e:ui
+
+# 특정 파일만 실행
+npx playwright test e2e/navigation.spec.ts
+```
+
+### 테스트 범위
+
+| 파일 | 테스트 범위 |
+|------|------------|
+| `navigation.spec.ts` | 홈페이지 로드, 5탭 네비게이션, 행사 탭 전환, 찜 버튼 |
+| `community.spec.ts` | 카테고리 탭, 필터링, 내 참여 모달, 글쓰기 버튼 |
+| `supabase-integration.spec.ts` | localStorage 폴백, 로그인 플로우, 찜/다녀옴, 도움됨, 리더보드, 프로필 |
+
+### Playwright 설정
+
+- 설정 파일: `playwright.config.ts`
+- Base URL: `http://localhost:3000`
+- 프로젝트: Desktop Chrome, Mobile Chrome (Pixel 5)
+- 스크린샷: 실패 시에만 저장
+- 리포트: HTML + List
+
+### 테스트 작성 가이드
+
+```typescript
+// 권장 로케이터 패턴
+page.getByRole("button", { name: /동행/i })           // 접근성 역할 기반
+page.locator('button:has-text("허브")')              // 텍스트 기반
+page.locator('[aria-label*="찜"]')                   // aria-label 기반
+page.locator('button:has(svg.lucide-star)')          // 아이콘 기반
+page.locator('a[href="/explore"]:visible')           // visible 요소만 (모바일/데스크톱 대응)
+
+// 페이지 로드 대기
+await page.waitForLoadState("networkidle");
+
+// 조건부 테스트 (요소가 없을 수 있는 경우)
+if (await button.isVisible()) {
+    await button.click();
+}
 ```
 
 ## 기능 테스트 방법
@@ -316,12 +386,13 @@ GOOGLE_CLIENT_SECRET=
 ## 작업 완료 후 체크리스트
 
 1. **빌드 테스트**: `npm run build` 성공 확인
-2. **테스트 안내**: 사용자에게 구체적인 테스트 방법 안내
+2. **E2E 테스트**: `npm run test:e2e` 전체 통과 확인
+3. **테스트 안내**: 사용자에게 구체적인 테스트 방법 안내
    - 어떤 URL로 접속해야 하는지
    - 어떤 버튼/기능을 클릭해야 하는지
    - 예상되는 결과가 무엇인지
-3. **TODO 업데이트**: `docs/TODO.md` 완료 항목 체크
-4. **문서 업데이트**: 필요 시 CLAUDE.md 테스트 방법 섹션 추가
+4. **TODO 업데이트**: `docs/TODO.md` 완료 항목 체크
+5. **문서 업데이트**: 필요 시 CLAUDE.md 테스트 방법 섹션 추가
 
 ---
 

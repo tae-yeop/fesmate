@@ -99,7 +99,42 @@ export function useXXX() {
 }
 ```
 
-## Mock 데이터 주의사항
+## Mock 데이터 아키텍처
+
+### 왜 Mock 데이터를 유지하는가?
+
+FesMate는 **Dual-Mode 데이터 패턴**을 사용합니다:
+
+| 상황 | 데이터 소스 | 이유 |
+|------|------------|------|
+| 로그인 사용자 | Supabase DB | 실제 서비스 데이터 |
+| 비로그인/개발/오프라인 | Mock + localStorage | 개발 편의, 오프라인 지원 |
+
+**Mock 데이터를 제거하면 안 되는 이유:**
+1. Supabase 장애 시 개발/테스트 불가
+2. 오프라인 환경에서 앱 테스트 불가
+3. Dev 메뉴 시나리오 테스트 불가 (A~G 시나리오)
+4. E2E 테스트가 외부 서비스 의존성 없이 동작 가능
+
+### 사용자 데이터 통합
+
+`MOCK_USERS`는 `MOCK_USER_PROFILES`에서 **파생**됩니다:
+
+```tsx
+// mock-data.ts
+import { MOCK_USER_PROFILES } from "./follow-context";
+
+// MOCK_USER_PROFILES가 단일 소스 (Single Source of Truth)
+export const MOCK_USERS = MOCK_USER_PROFILES.map((profile, index) => ({
+    id: profile.id,
+    nickname: profile.nickname,  // 동기화 자동 보장
+    role: "USER" as const,
+    createdAt: addDays(now, -100 + index * 20),
+    updatedAt: addDays(now, -100 + index * 20),
+}));
+```
+
+닉네임을 변경해야 하면 **`MOCK_USER_PROFILES`만 수정**하세요.
 
 ### MOCK_USER_PROFILES는 배열입니다
 
@@ -116,14 +151,29 @@ const user = MOCK_USER_PROFILES.find(u => u.id === userId);
 
 ### Mock 데이터 위치
 
-| 데이터 | 파일 |
-|--------|------|
-| Event, Slot, Post, Notification | `mock-data.ts` |
-| UserProfile | `follow-context.tsx` |
-| CompanionRequest | `companion-context.tsx` |
-| ParticipationRequest | `participation-context.tsx` |
-| Badge | `badge-context.tsx` |
-| Crew | `crew-context.tsx` |
+| 데이터 | 파일 | 역할 |
+|--------|------|------|
+| Event, Slot, Post, Notification | `mock-data.ts` | 시나리오 테스트용 |
+| MOCK_USERS | `mock-data.ts` | MOCK_USER_PROFILES에서 파생 |
+| MOCK_USER_PROFILES | `follow-context.tsx` | 사용자 프로필 (단일 소스) |
+| MOCK_CREWS | `crew-context.tsx` | 크루 데이터 |
+| CompanionRequest | `companion-context.tsx` | 1:1 동행 제안 |
+| ParticipationRequest | `participation-context.tsx` | 글 참여 신청 |
+| Badge | `badge-context.tsx` | 뱃지 정의 |
+
+### 시나리오 데이터 (Dev 메뉴)
+
+`SCENARIO_EVENT_IDS`로 시나리오별 테스트 이벤트 매핑:
+
+| 시나리오 | 이벤트 ID | 설명 |
+|----------|-----------|------|
+| A | `55948` | 기본 (단일일정, 예정) |
+| B | `e2` | 다일 페스티벌 (LIVE) |
+| C | `24016943` | 종료 시각 누락 (RECAP) |
+| D | `e4` | 취소됨 (CANCELED) |
+| E | `e5` | 연기됨 (POSTPONED) |
+| F | `eF` | 해외 (Asia/Tokyo) |
+| G | `pentaport` | 멀티스테이지 3일 페스티벌 |
 
 ## Supabase 사용
 
