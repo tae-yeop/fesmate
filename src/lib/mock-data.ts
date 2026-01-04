@@ -1,6 +1,7 @@
 import { Event, Slot, OperationalSlot, Stage } from "@/types/event";
 import { Post } from "@/types/post";
 import { Notification } from "@/types/notification";
+import { MOCK_USER_PROFILES } from "./mock-user-profiles";
 
 /**
  * Mock 행사 데이터 - PRD v0.5 기준
@@ -1556,55 +1557,22 @@ export const MOCK_POSTS: Post[] = [
 
 /**
  * Mock 사용자 데이터
+ *
+ * MOCK_USERS는 MOCK_USER_PROFILES에서 파생됩니다.
+ * 닉네임 동기화 문제를 방지하기 위해 단일 소스(MOCK_USER_PROFILES)에서 생성합니다.
+ *
+ * 사용처:
+ * - Dev 메뉴에서 사용자 전환
+ * - 글/댓글 작성자 정보 표시
+ * - 크루 멤버 닉네임 조회
  */
-/**
- * MOCK_USERS - MOCK_USER_PROFILES와 일치하는 사용자 목록
- * 리더보드, 프로필, 친구 기능 등에서 동일한 사용자 정보 사용
- */
-export const MOCK_USERS = [
-    {
-        id: "user1",
-        nickname: "페스티벌러",
-        role: "USER" as const,
-        createdAt: addDays(now, -100),
-        updatedAt: addDays(now, -100),
-    },
-    {
-        id: "user2",
-        nickname: "록페스러버",
-        role: "USER" as const,
-        createdAt: addDays(now, -80),
-        updatedAt: addDays(now, -80),
-    },
-    {
-        id: "user3",
-        nickname: "인디키드",
-        role: "USER" as const,
-        createdAt: addDays(now, -60),
-        updatedAt: addDays(now, -60),
-    },
-    {
-        id: "user4",
-        nickname: "투어러",
-        role: "USER" as const,
-        createdAt: addDays(now, -45),
-        updatedAt: addDays(now, -45),
-    },
-    {
-        id: "user5",
-        nickname: "재즈매니아",
-        role: "USER" as const,
-        createdAt: addDays(now, -30),
-        updatedAt: addDays(now, -30),
-    },
-    {
-        id: "user6",
-        nickname: "DJ마스터",
-        role: "USER" as const,
-        createdAt: addDays(now, -20),
-        updatedAt: addDays(now, -20),
-    },
-];
+export const MOCK_USERS = MOCK_USER_PROFILES.map((profile, index) => ({
+    id: profile.id,
+    nickname: profile.nickname,
+    role: "USER" as const,
+    createdAt: addDays(now, -100 + index * 20),
+    updatedAt: addDays(now, -100 + index * 20),
+}));
 
 /**
  * 헬퍼: 이벤트 ID로 이벤트 찾기

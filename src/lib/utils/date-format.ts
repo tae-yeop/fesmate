@@ -60,6 +60,9 @@ export function getRelativeTime(date: Date) {
     }).format(new Date(date));
 }
 
+/** 상대 시간 표시 (alias for getRelativeTime) */
+export const formatTimeAgo = getRelativeTime;
+
 /** D-Day 계산 (예: D-Day, D-3, D+5) */
 export function getDday(date: Date) {
     const now = new Date();
@@ -73,4 +76,29 @@ export function getDday(date: Date) {
     if (days === 0) return "D-Day";
     if (days > 0) return `D-${days}`;
     return `D+${Math.abs(days)}`;
+}
+
+/**
+ * 커스텀 포맷 날짜 표시
+ * 지원 토큰: YYYY, YY, M, MM, D, DD, d, dd
+ * 예: "YYYY년 M월 D일" → "2024년 12월 25일"
+ * 예: "YYYY.MM.DD" → "2024.12.25"
+ */
+export function formatKoreanDate(date: Date | string, format: string): string {
+    const d = new Date(date);
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1;
+    const day = d.getDate();
+    const weekday = d.getDay();
+    const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+
+    return format
+        .replace("YYYY", String(year))
+        .replace("YY", String(year).slice(-2))
+        .replace("MM", String(month).padStart(2, "0"))
+        .replace("M", String(month))
+        .replace("DD", String(day).padStart(2, "0"))
+        .replace("D", String(day))
+        .replace("dd", `(${weekdays[weekday]})`)
+        .replace("d", weekdays[weekday]);
 }
