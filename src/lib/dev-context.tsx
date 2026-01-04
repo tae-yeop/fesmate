@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, useMemo, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useMemo, useEffect, ReactNode } from "react";
 import { getEventByScenario, getPostsByScenario, getSlotsByScenario, SCENARIO_EVENT_IDS } from "@/lib/mock-data";
 import type { Event, Slot } from "@/types/event";
 import type { Post } from "@/types/post";
@@ -21,6 +21,9 @@ export const SCENARIO_INFO: Record<ScenarioType, { label: string; description: s
 
 /** Override 모드 */
 export type OverrideMode = "AUTO" | "LIVE" | "RECAP";
+
+/** 데이터 모드 (Mock vs Supabase) */
+export type DataMode = "mock" | "supabase";
 
 interface DevContextType {
     // 시간 시뮬레이터
@@ -52,9 +55,19 @@ interface DevContextType {
     // Dev 모드 활성화
     isDevMode: boolean;
     toggleDevMode: () => void;
+
+    // 데이터 모드 (Mock vs Supabase)
+    dataMode: DataMode;
+    setDataMode: (mode: DataMode) => void;
+
+    // Hydration 상태 (localStorage 로드 완료 여부)
+    isHydrated: boolean;
 }
 
 const DevContext = createContext<DevContextType | undefined>(undefined);
+
+// localStorage 키
+const DEV_STORAGE_KEY = "fesmate:v1:device:dev-settings";
 
 export function DevProvider({ children }: { children: ReactNode }) {
     const [simulatedTime, setSimulatedTime] = useState<Date | null>(null);
@@ -62,6 +75,61 @@ export function DevProvider({ children }: { children: ReactNode }) {
     const [isDevMode, setIsDevMode] = useState(false);
     const [activeScenario, setActiveScenario] = useState<ScenarioType>("A");
     const [overrideMode, setOverrideMode] = useState<OverrideMode>("AUTO");
+    const [dataMode, setDataMode] = useState<DataMode>("mock");
+    const [isHydrated, setIsHydrated] = useState(false);
+
+    // 클라이언트에서 localStorage 로드 (hydration 후)
+    useEffect(() => {
+        console.log("[DevContext] Load useEffect triggered");
+
+        if (typeof window === "undefined") {
+            console.log("[DevContext] SSR - skipping localStorage");
+            setIsHydrated(true);
+            return;
+        }
+
+        try {
+            const saved = localStorage.getItem(DEV_STORAGE_KEY);
+            console.log("[DevContext] localStorage.getItem result:", saved);
+
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                console.log("[DevContext] Parsed settings:", parsed);
+                if (parsed.mockUserId !== undefined) setMockUserId(parsed.mockUserId);
+                if (parsed.dataMode) setDataMode(parsed.dataMode);
+            } else {
+                console.log("[DevContext] No saved settings found");
+            }
+        } catch (e) {
+            console.error("[DevContext] Error loading settings:", e);
+        }
+
+        console.log("[DevContext] Setting isHydrated to true");
+        setIsHydrated(true);
+    }, []);
+
+    // mockUserId, dataMode 변경 시 localStorage에 저장 (hydration 완료 후에만)
+    useEffect(() => {
+        console.log("[DevContext] Save useEffect triggered, isHydrated:", isHydrated, "mockUserId:", mockUserId, "dataMode:", dataMode);
+
+        if (!isHydrated) {
+            console.log("[DevContext] Not hydrated yet, skipping save");
+            return;
+        }
+
+        if (typeof window === "undefined") {
+            console.log("[DevContext] SSR - skipping save");
+            return;
+        }
+
+        try {
+            const settings = { mockUserId, dataMode };
+            localStorage.setItem(DEV_STORAGE_KEY, JSON.stringify(settings));
+            console.log("[DevContext] Saved to localStorage:", settings);
+        } catch (e) {
+            console.error("[DevContext] Error saving settings:", e);
+        }
+    }, [mockUserId, dataMode, isHydrated]);
 
     // 현재 시간 가져오기 (시뮬레이션 또는 실제)
     const getNow = useCallback(() => {
@@ -113,6 +181,9 @@ export function DevProvider({ children }: { children: ReactNode }) {
                 isLoggedIn: mockUserId !== null,
                 isDevMode,
                 toggleDevMode,
+                dataMode,
+                setDataMode,
+                isHydrated,
             }}
         >
             {children}

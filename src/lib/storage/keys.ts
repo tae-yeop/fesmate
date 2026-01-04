@@ -91,9 +91,14 @@ export const DOMAINS = {
   HELPFUL: "helpful",
   CALLGUIDE_HELPFUL: "callguide-helpful",
   NOTIFICATIONS: "notifications",
+  RATE_LIMITS: "rate-limits",
+  USER_TRUST: "user-trust",
+  USER_SANCTIONS: "user-sanctions",
+  TRUST_HISTORY: "trust-history",
 
   // Shared (전역)
   COMMENTS: "comments",
+  CALLGUIDE_REPORTS: "callguide-reports",
   COMPANION_REQUESTS: "companion-requests",
   PARTICIPATION_REQUESTS: "participation-requests",
   CREWS: "crews",
@@ -108,6 +113,12 @@ export const DOMAINS = {
   CALLGUIDE_VERSIONS: "callguide-versions",
   USER_PROFILES: "user-profiles",
   IMAGES: "images",
+  USER_EVENTS: "user-events",
+  TIMETABLE_SUGGESTIONS: "timetable-suggestions",
+  GALLERIES: "galleries",
+  SLOT_CONTENTS: "slot-contents",
+  SLOT_CONTENT_HELPFUL: "slot-content-helpful",
+  USER_POSTS: "user-posts", // Mock 모드에서 사용자가 작성한 글
 
   // Device (기기별 설정)
   TICKETBOOK_VIEW: "ticketbook-view",

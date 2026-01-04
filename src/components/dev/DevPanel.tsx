@@ -13,8 +13,10 @@ import {
     Layers,
     Radio,
     ExternalLink,
+    Database,
+    Cloud,
 } from "lucide-react";
-import { useDevContext, SCENARIO_INFO, ScenarioType, OverrideMode } from "@/lib/dev-context";
+import { useDevContext, SCENARIO_INFO, ScenarioType, OverrideMode, DataMode } from "@/lib/dev-context";
 import { cn } from "@/lib/utils";
 import { MOCK_USERS } from "@/lib/mock-data";
 
@@ -49,6 +51,9 @@ export function DevPanel() {
         // Dev 모드
         isDevMode,
         toggleDevMode,
+        // 데이터 모드
+        dataMode,
+        setDataMode,
     } = useDevContext();
 
     // 시나리오 이벤트 페이지로 이동
@@ -245,6 +250,47 @@ export function DevPanel() {
                                     </button>
                                 ))}
                             </div>
+                        </section>
+
+                        {/* 데이터 모드 */}
+                        <section>
+                            <h3 className="text-xs font-bold text-muted-foreground mb-2 flex items-center gap-1">
+                                <Database className="h-3 w-3" />
+                                데이터 소스
+                            </h3>
+                            <div className="flex gap-1">
+                                {(["mock", "supabase"] as DataMode[]).map((mode) => (
+                                    <button
+                                        key={mode}
+                                        onClick={() => setDataMode(mode)}
+                                        className={cn(
+                                            "flex-1 rounded border px-2 py-1.5 text-xs font-medium flex items-center justify-center gap-1",
+                                            dataMode === mode
+                                                ? mode === "mock"
+                                                    ? "bg-amber-500 text-white"
+                                                    : "bg-emerald-500 text-white"
+                                                : "hover:bg-accent"
+                                        )}
+                                    >
+                                        {mode === "mock" ? (
+                                            <>
+                                                <Database className="h-3 w-3" />
+                                                Mock
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Cloud className="h-3 w-3" />
+                                                Supabase
+                                            </>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                                {dataMode === "mock"
+                                    ? "로컬 Mock 데이터 사용 (localStorage)"
+                                    : "Supabase DB 연동 (실시간 동기화)"}
+                            </p>
                         </section>
 
                         {/* 세션 토글 */}
