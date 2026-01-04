@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Pencil, UserPlus, UserMinus, Users, UserCheck, LogIn, Search, Send, Inbox, Check, X, Calendar, Settings } from "lucide-react";
+import { ChevronLeft, Pencil, UserPlus, UserMinus, Users, UserCheck, LogIn, Search, Send, Inbox, Check, X, Calendar, Settings, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUserProfile } from "@/lib/user-profile-context";
 import { useFollow, MOCK_USER_PROFILES } from "@/lib/follow-context";
@@ -228,8 +228,17 @@ export default function ProfilePage() {
                 <div className="container max-w-2xl mx-auto">
                     <div className="flex items-start gap-4">
                         {/* 아바타 */}
-                        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/20 to-pink-500/20 flex items-center justify-center text-4xl border-2 border-primary/30 shadow-lg">
-                            {myProfile.avatar}
+                        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/20 to-pink-500/20 flex items-center justify-center text-4xl border-2 border-primary/30 shadow-lg overflow-hidden">
+                            {myProfile.avatar?.startsWith("http") ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                    src={myProfile.avatar}
+                                    alt={myProfile.nickname}
+                                    className="w-full h-full object-cover"
+                                />
+                            ) : (
+                                myProfile.avatar || "👤"
+                            )}
                         </div>
 
                         {/* 정보 */}
@@ -238,6 +247,14 @@ export default function ProfilePage() {
                                 <h2 className="text-xl font-bold truncate">
                                     {myProfile.nickname}
                                 </h2>
+                                <Link
+                                    href="/profile/activity"
+                                    className="p-1.5 rounded-full bg-muted hover:bg-muted/80 transition-colors text-muted-foreground hover:text-foreground"
+                                    aria-label="내 활동"
+                                    title="내 활동"
+                                >
+                                    <Activity className="h-4 w-4" />
+                                </Link>
                                 <Link
                                     href="/profile/edit"
                                     className="p-1.5 rounded-full bg-muted hover:bg-muted/80 transition-colors text-muted-foreground hover:text-foreground"

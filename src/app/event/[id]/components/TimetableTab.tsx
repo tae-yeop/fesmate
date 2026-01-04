@@ -9,10 +9,14 @@ import { formatTime } from "@/lib/utils/date-format";
 import { useDevContext } from "@/lib/dev-context";
 import { useMyTimetable } from "@/lib/my-timetable-context";
 import { useFollow } from "@/lib/follow-context";
-import { MyTimetableView, CustomEventModal, LinearTimeline } from "@/components/timetable";
+import { MyTimetableView, CustomEventModal, LinearTimeline, SlotEditModal, SuggestionReviewPanel } from "@/components/timetable";
 import { SlotMarkType, SLOT_MARK_PRESETS } from "@/types/my-timetable";
 import { downloadICS, getExportSummary } from "@/lib/utils/ics-export";
 import { findCallGuideArtistByName } from "@/lib/mock-call-guide";
+import { useEventRegistration } from "@/lib/event-registration-context";
+import { useTimetableSuggestion } from "@/lib/timetable-suggestion-context";
+import { ChangeType } from "@/types/timetable-suggestion";
+import { Edit3, Bell, Inbox, ChevronDown } from "lucide-react";
 
 interface TimetableTabProps {
     event: Event;
@@ -58,6 +62,8 @@ function SlotMarkMenu({
     onClose,
     friendsWithSlot,
     onToggleFriend,
+    canEditSlot,
+    onEditSlot,
 }: {
     slotId: string;
     slotTitle: string;
@@ -68,6 +74,8 @@ function SlotMarkMenu({
     onClose: () => void;
     friendsWithSlot: FriendWithSlot[];
     onToggleFriend: (userId: string, nickname: string) => void;
+    canEditSlot?: boolean;
+    onEditSlot?: () => void;
 }) {
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -158,6 +166,28 @@ function SlotMarkMenu({
                             <ChevronRight className="h-5 w-5 text-purple-400" />
                         </Link>
                     )}
+
+                    {/* 슬롯 편집 버튼 (편집 권한이 있는 경우만) */}
+                    {canEditSlot && onEditSlot && (
+                        <button
+                            onClick={() => {
+                                onEditSlot();
+                                onClose();
+                            }}
+                            className="flex items-center gap-3 w-full mt-3 p-3 rounded-xl bg-primary/5 border border-primary/20 hover:bg-primary/10 transition-colors"
+                        >
+                            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+                                <Edit3 className="h-4 w-4 text-white" />
+                            </div>
+                            <div className="flex-1 text-left">
+                                <p className="text-sm font-medium text-primary">슬롯 정보 수정</p>
+                                <p className="text-xs text-muted-foreground">
+                                    시간, 아티스트 정보 편집
+                                </p>
+                            </div>
+                            <ChevronRight className="h-5 w-5 text-primary/50" />
+                        </button>
+                    )}
                 </div>
 
                 {/* 같이할 친구 섹션 */}
@@ -232,6 +262,41 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
         getFriendTimetable, addFriendToOverlay, removeFriendFromOverlay, getOverlayFriends
     } = useMyTimetable();
     const { getFriends } = useFollow();
+
+    // 편집 관련 Context
+    const { isMyEvent } = useEventRegistration();
+    const {
+        createSuggestion,
+        getPendingSuggestions,
+        approveSuggestion,
+        rejectSuggestion,
+        getEditPermissionForEvent,
+    } = useTimetableSuggestion();
+
+    // 편집 권한 확인 (사용자 등록 행사의 경우 registeredBy 필드 사용)
+    const registeredBy = (event as { registeredBy?: string }).registeredBy;
+    const editPermission = getEditPermissionForEvent(registeredBy);
+    const canEdit = editPermission === "immediate";
+    const canSuggest = editPermission === "suggest";
+    const isEventOwner = isMyEvent(event.id);
+
+    // 편집 관련 상태
+    const [showSlotEditModal, setShowSlotEditModal] = useState(false);
+    const [editingSlot, setEditingSlot] = useState<Slot | null>(null);
+    const [showSuggestionPanel, setShowSuggestionPanel] = useState(false);
+    const [editMode, setEditMode] = useState<"add" | "edit">("add");
+    const [localSlots, setLocalSlots] = useState<Slot[]>(slots);
+
+    // 대기 중인 제안 목록 (행사 소유자만)
+    const pendingSuggestions = useMemo(() => {
+        if (!isEventOwner) return [];
+        return getPendingSuggestions(event.id);
+    }, [isEventOwner, event.id, getPendingSuggestions]);
+
+    // slots prop이 변경되면 localSlots 업데이트
+    useEffect(() => {
+        setLocalSlots(slots);
+    }, [slots]);
 
     // 타임테이블 뷰 타입 결정 (linear: 단독 공연, grid: 페스티벌)
     const timetableViewType = getTimetableViewType(event);
@@ -393,25 +458,25 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
         clearSlotMark(event.id, slotId);
     };
 
-    // 슬롯을 날짜별로 그룹화
-    const slotsByDay = useMemo(() => slots.reduce((acc, slot) => {
+    // 슬롯을 날짜별로 그룹화 (localSlots 사용)
+    const slotsByDay = useMemo(() => localSlots.reduce((acc, slot) => {
         const day = slot.day || 1;
         if (!acc[day]) acc[day] = [];
         acc[day].push(slot);
         return acc;
-    }, {} as Record<number, Slot[]>), [slots]);
+    }, {} as Record<number, Slot[]>), [localSlots]);
 
     // 사용 가능한 Day 목록
     const availableDays = useMemo(() => {
         return Object.keys(slotsByDay).map(Number).sort((a, b) => a - b);
     }, [slotsByDay]);
 
-    // 사용 가능한 Stage 목록
+    // 사용 가능한 Stage 목록 (localSlots 사용)
     const availableStages = useMemo(() => {
         const stages = new Set<string>();
-        slots.forEach(s => s.stage && stages.add(s.stage));
+        localSlots.forEach(s => s.stage && stages.add(s.stage));
         return Array.from(stages).sort();
-    }, [slots]);
+    }, [localSlots]);
 
     // 오늘이 몇 번째 Day인지 계산
     const todayDay = useMemo(() => {
@@ -439,9 +504,9 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
         }
     }, [todayDay]);
 
-    // 필터링된 슬롯
+    // 필터링된 슬롯 (localSlots 사용 - 편집된 슬롯 반영)
     const filteredSlots = useMemo(() => {
-        let filtered = slots;
+        let filtered = localSlots;
 
         if (selectedDay !== "all") {
             filtered = filtered.filter(s => (s.day || 1) === selectedDay);
@@ -452,7 +517,7 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
         }
 
         return filtered.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
-    }, [slots, selectedDay, selectedStage]);
+    }, [localSlots, selectedDay, selectedStage]);
 
     // 필터링된 슬롯을 날짜별로 그룹화
     const filteredSlotsByDay = useMemo(() => {
@@ -464,15 +529,15 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
         }, {} as Record<number, Slot[]>);
     }, [filteredSlots]);
 
-    // 그리드 뷰용: 선택된 Day의 슬롯들만
+    // 그리드 뷰용: 선택된 Day의 슬롯들만 (localSlots 사용)
     const dayFilteredSlots = useMemo(() => {
         if (selectedDay === "all") {
             // 전체일 때는 첫 번째 Day만 그리드로 표시
             const firstDay = availableDays[0] || 1;
-            return slots.filter(s => (s.day || 1) === firstDay);
+            return localSlots.filter(s => (s.day || 1) === firstDay);
         }
-        return slots.filter(s => (s.day || 1) === selectedDay);
-    }, [slots, selectedDay, availableDays]);
+        return localSlots.filter(s => (s.day || 1) === selectedDay);
+    }, [localSlots, selectedDay, availableDays]);
 
     // 그리드 뷰용: 스테이지별로 슬롯 분류
     const slotsByStage = useMemo(() => {
@@ -591,6 +656,42 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
 
     return (
         <div className="space-y-6">
+            {/* 편집 버튼 영역 (사용자 등록 행사만) */}
+            {(canEdit || canSuggest || isEventOwner) && (
+                <div className="flex items-center justify-between gap-3 p-3 bg-gradient-to-r from-primary/5 to-primary/10 rounded-xl border border-primary/20">
+                    <div className="flex items-center gap-2">
+                        <Edit3 className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium">
+                            {canEdit ? "타임테이블 편집" : "타임테이블 수정 제안"}
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        {/* 제안 검토 버튼 (행사 소유자만) */}
+                        {isEventOwner && pendingSuggestions.length > 0 && (
+                            <button
+                                onClick={() => setShowSuggestionPanel(true)}
+                                className="flex items-center gap-1.5 px-3 py-2 bg-yellow-500 text-white rounded-lg text-sm font-medium hover:bg-yellow-600 transition-colors"
+                            >
+                                <Inbox className="h-4 w-4" />
+                                <span>제안 {pendingSuggestions.length}</span>
+                            </button>
+                        )}
+                        {/* 슬롯 추가 버튼 */}
+                        <button
+                            onClick={() => {
+                                setEditMode("add");
+                                setEditingSlot(null);
+                                setShowSlotEditModal(true);
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                        >
+                            <Plus className="h-4 w-4" />
+                            <span>슬롯 추가</span>
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Day 스위처 */}
             {availableDays.length > 1 && (
                 <div className="space-y-3">
@@ -1247,6 +1348,12 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
                     onClose={() => setMarkingSlot(null)}
                     friendsWithSlot={friendsForMarkingSlot}
                     onToggleFriend={handleToggleFriend}
+                    canEditSlot={canEdit || canSuggest}
+                    onEditSlot={() => {
+                        setEditMode("edit");
+                        setEditingSlot(markingSlot);
+                        setShowSlotEditModal(true);
+                    }}
                 />
             )}
 
@@ -1532,6 +1639,86 @@ export function TimetableTab({ event, slots }: TimetableTabProps) {
                     </div>
                 </div>
             )}
+
+            {/* 슬롯 편집 모달 */}
+            <SlotEditModal
+                isOpen={showSlotEditModal}
+                onClose={() => {
+                    setShowSlotEditModal(false);
+                    setEditingSlot(null);
+                }}
+                eventId={event.id}
+                editMode={editMode}
+                slotType="artist"
+                permission={editPermission}
+                slot={editingSlot || undefined}
+                stages={event.stages}
+                eventStartAt={event.startAt}
+                eventEndAt={event.endAt}
+                onSubmit={async (input) => {
+                    // 즉시 수정 권한이 있는 경우
+                    if (canEdit) {
+                        if (input.changeType === "add_slot") {
+                            // 새 슬롯 추가 (로컬 상태에 추가)
+                            const afterData = input.afterData as Partial<Slot>;
+                            const newSlot: Slot = {
+                                id: `slot-${Date.now()}`,
+                                eventId: event.id,
+                                day: afterData.day || 1,
+                                stage: afterData.stage || "Main Stage",
+                                startAt: afterData.startAt || new Date(),
+                                endAt: afterData.endAt || new Date(),
+                                title: afterData.title,
+                                artist: afterData.artist,
+                            };
+                            setLocalSlots(prev => [...prev, newSlot]);
+                        } else if (input.changeType === "edit_slot" && editingSlot) {
+                            // 기존 슬롯 수정
+                            const afterData = input.afterData as Partial<Slot>;
+                            setLocalSlots(prev => prev.map(s =>
+                                s.id === editingSlot.id
+                                    ? {
+                                        ...s,
+                                        startAt: afterData.startAt || s.startAt,
+                                        endAt: afterData.endAt || s.endAt,
+                                        title: afterData.title || s.title,
+                                        stage: afterData.stage || s.stage,
+                                        artist: afterData.artist || s.artist,
+                                    }
+                                    : s
+                            ));
+                        } else if (input.changeType === "delete_slot" && input.targetId) {
+                            // 슬롯 삭제
+                            setLocalSlots(prev => prev.filter(s => s.id !== input.targetId));
+                        }
+                        setShowSlotEditModal(false);
+                        setEditingSlot(null);
+                        return;
+                    }
+
+                    // 제안 권한만 있는 경우
+                    if (canSuggest) {
+                        await createSuggestion(input);
+                        setShowSlotEditModal(false);
+                        setEditingSlot(null);
+                    }
+                }}
+            />
+
+            {/* 제안 검토 패널 (행사 소유자만) */}
+            <SuggestionReviewPanel
+                isOpen={showSuggestionPanel}
+                onClose={() => setShowSuggestionPanel(false)}
+                suggestions={pendingSuggestions}
+                onApprove={async (suggestionId) => {
+                    const result = await approveSuggestion(suggestionId);
+                    return result;
+                }}
+                onReject={async (suggestionId, reason) => {
+                    const result = await rejectSuggestion(suggestionId, reason);
+                    return result;
+                }}
+            />
         </div>
     );
 }

@@ -14,9 +14,10 @@ import {
     Check,
     Loader2,
 } from "lucide-react";
-import { getPostsByEventId, getSlotsByEventId } from "@/lib/mock-data";
-import { useEvent } from "@/lib/supabase/hooks";
-import { cn } from "@/lib/utils";
+import { getSlotsByEventId } from "@/lib/mock-data";
+import { useEvent, useEventCounts } from "@/lib/supabase/hooks";
+import { usePost } from "@/lib/post-context";
+import { cn, isValidUUID } from "@/lib/utils";
 import { getHubMode, HubMode } from "@/types/event";
 import { PostComposer } from "@/components/posts/PostComposer";
 import { formatDateTime } from "@/lib/utils/date-format";
@@ -24,6 +25,7 @@ import { OverviewTab, HubTab, TimetableTab, ArtistsTab } from "./components";
 import { useWishlist } from "@/lib/wishlist-context";
 import { useDevContext } from "@/lib/dev-context";
 import { useAuth } from "@/lib/auth-context";
+import { useEventRegistration } from "@/lib/event-registration-context";
 import { LoginPromptModal } from "@/components/auth";
 
 interface PageProps {
@@ -42,8 +44,24 @@ export default function EventDetailPage({ params }: PageProps) {
     const searchParams = useSearchParams();
     const router = useRouter();
 
+    // 사용자 등록 행사 Context
+    const { getEvent: getUserEvent } = useEventRegistration();
+
+    // 사용자 등록 행사인지 확인 (user-event- 접두사)
+    const isUserEvent = id.startsWith("user-event-");
+
     // Supabase에서 이벤트 데이터 가져오기 (오류 시 Mock 폴백)
-    const { event, isLoading, isFromSupabase } = useEvent(id);
+    const { event: supabaseEvent, isLoading: isSupabaseLoading, isFromSupabase } = useEvent(isUserEvent ? null : id);
+
+    // 사용자 등록 행사이면 Context에서 조회, 아니면 Supabase/Mock에서 조회
+    const userRegisteredEvent = isUserEvent ? getUserEvent(id) : undefined;
+    const event = userRegisteredEvent || supabaseEvent;
+    const isLoading = isUserEvent ? false : isSupabaseLoading;
+
+    // 실시간 카운트 구독 (Supabase 사용자만)
+    const { wishlistCount: realtimeWishlistCount, attendedCount: realtimeAttendedCount, status: realtimeStatus } = useEventCounts({
+        eventId: id,
+    });
 
     // URL의 tab 쿼리 파라미터로 초기 탭 결정
     const initialTab = (searchParams.get("tab") as TabType) || "overview";
@@ -80,6 +98,38 @@ export default function EventDetailPage({ params }: PageProps) {
     // 찜/다녀옴 상태 (Context)
     const { isWishlist, isAttended, toggleWishlist, toggleAttended } = useWishlist();
 
+    // Mock 이벤트용 로컬 카운트 (Supabase 이벤트는 realtime으로 처리)
+    // 사용자 등록 행사도 Mock처럼 로컬 카운트 사용
+    const isMockEvent = !isValidUUID(id) || isUserEvent;
+    const [localWishlistDelta, setLocalWishlistDelta] = useState(0);
+    const [localAttendedDelta, setLocalAttendedDelta] = useState(0);
+
+    // 찜 토글 래퍼 (로컬 카운트 업데이트 포함)
+    const handleToggleWishlist = useCallback(() => {
+        const wasWishlisted = isWishlist(id);
+        toggleWishlist(id);
+        if (isMockEvent) {
+            setLocalWishlistDelta(prev => prev + (wasWishlisted ? -1 : 1));
+        }
+    }, [id, isWishlist, toggleWishlist, isMockEvent]);
+
+    // 다녀옴 토글 래퍼 (로컬 카운트 업데이트 포함)
+    const handleToggleAttended = useCallback(() => {
+        const wasAttended = isAttended(id);
+        toggleAttended(id);
+        if (isMockEvent) {
+            setLocalAttendedDelta(prev => prev + (wasAttended ? -1 : 1));
+        }
+    }, [id, isAttended, toggleAttended, isMockEvent]);
+
+    // 최종 카운트 계산
+    const displayWishlistCount = isMockEvent
+        ? (event?.stats?.wishlistCount || 0) + localWishlistDelta
+        : (realtimeWishlistCount || event?.stats?.wishlistCount || 0);
+    const displayAttendedCount = isMockEvent
+        ? (event?.stats?.attendedCount || 0) + localAttendedDelta
+        : (realtimeAttendedCount || event?.stats?.attendedCount || 0);
+
     // Dev Context - 시간 시뮬레이션, 시나리오 데이터, override 모드
     const {
         getNow,
@@ -91,14 +141,18 @@ export default function EventDetailPage({ params }: PageProps) {
         scenarioSlots,
     } = useDevContext();
 
+    // Post Context - 글 조회
+    const { getPostsByEvent } = usePost();
+
     // 이 행사의 포스트와 슬롯 (Dev 모드에서 시나리오 데이터 사용)
     const posts = useMemo(() => {
         // Dev 모드이고 현재 이벤트가 시나리오 이벤트와 같으면 시나리오 데이터 사용
         if (isDevMode && id === scenarioEventId && scenarioPosts.length > 0) {
             return scenarioPosts;
         }
-        return getPostsByEventId(id);
-    }, [id, isDevMode, scenarioEventId, scenarioPosts]);
+        // PostContext에서 가져오기 (새로 작성한 글 포함)
+        return getPostsByEvent(id);
+    }, [id, isDevMode, scenarioEventId, scenarioPosts, getPostsByEvent]);
 
     const slots = useMemo(() => {
         if (isDevMode && id === scenarioEventId && scenarioSlots.length > 0) {
@@ -261,7 +315,7 @@ export default function EventDetailPage({ params }: PageProps) {
                     {/* Action Buttons - ⭐찜 / ✅다녀옴 */}
                     <div className="flex w-full gap-3">
                         <button
-                            onClick={() => requireAuth("찜하기", () => toggleWishlist(id))}
+                            onClick={() => requireAuth("찜하기", handleToggleWishlist)}
                             className={cn(
                                 "flex-1 flex items-center justify-center gap-2 rounded-full border py-2.5 text-sm font-medium transition-colors",
                                 isWishlist(id)
@@ -270,10 +324,10 @@ export default function EventDetailPage({ params }: PageProps) {
                             )}
                         >
                             <Star className={cn("h-4 w-4", isWishlist(id) && "fill-yellow-400")} />
-                            <span>찜 {event.stats?.wishlistCount?.toLocaleString()}</span>
+                            <span>찜 {displayWishlistCount.toLocaleString()}</span>
                         </button>
                         <button
-                            onClick={() => requireAuth("다녀옴 기록", () => toggleAttended(id))}
+                            onClick={() => requireAuth("다녀옴 기록", handleToggleAttended)}
                             className={cn(
                                 "flex-1 flex items-center justify-center gap-2 rounded-full border py-2.5 text-sm font-medium transition-colors",
                                 isAttended(id)
@@ -282,7 +336,7 @@ export default function EventDetailPage({ params }: PageProps) {
                             )}
                         >
                             <CheckCircle2 className={cn("h-4 w-4", isAttended(id) && "fill-green-400")} />
-                            <span>다녀옴 {event.stats?.attendedCount?.toLocaleString()}</span>
+                            <span>다녀옴 {displayAttendedCount.toLocaleString()}</span>
                         </button>
                     </div>
                 </div>

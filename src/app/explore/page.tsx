@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { Search, Grid3X3, List, Calendar, X, ChevronDown, Loader2, Database, HardDrive } from "lucide-react";
+import { Search, Grid3X3, List, Calendar, X, ChevronDown, Loader2, Database, HardDrive, Plus } from "lucide-react";
 import { EventCard } from "@/components/events/EventCard";
 import { EventListItem } from "@/components/events/EventListItem";
 import { EventCalendarView } from "@/components/events/EventCalendarView";
@@ -11,6 +11,8 @@ import { useWishlist } from "@/lib/wishlist-context";
 import { useAuth } from "@/lib/auth-context";
 import { useDevContext } from "@/lib/dev-context";
 import { LoginPromptModal } from "@/components/auth";
+import { EventRegistrationModal } from "@/components/events/EventRegistrationModal";
+import { useEventRegistration } from "@/lib/event-registration-context";
 
 type ViewType = "card" | "list" | "calendar";
 type SortType = "date" | "recent";
@@ -40,12 +42,16 @@ export default function ExplorePage() {
     });
     const [activeFilter, setActiveFilter] = useState<keyof Filters | null>(null);
     const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+    const [showRegistrationModal, setShowRegistrationModal] = useState(false);
 
     // Supabase에서 이벤트 데이터 가져오기 (오류 시 Mock 폴백)
     const { events: allEvents, isLoading, isFromSupabase } = useEvents();
 
     // 찜/다녀옴 상태
     const { isWishlist, isAttended, toggleWishlist } = useWishlist();
+
+    // 사용자 등록 행사
+    const { userEvents } = useEventRegistration();
 
     // 인증 상태
     const { user } = useAuth();
@@ -61,6 +67,15 @@ export default function ExplorePage() {
         }
     }, [isLoggedIn, toggleWishlist]);
 
+    // 행사 등록 버튼 클릭
+    const handleRegisterClick = useCallback(() => {
+        if (isLoggedIn) {
+            setShowRegistrationModal(true);
+        } else {
+            setShowLoginPrompt(true);
+        }
+    }, [isLoggedIn]);
+
     // 필터 옵션
     const filterOptions = {
         region: ["서울", "경기", "인천", "부산", "대구", "광주", "대전"],
@@ -73,7 +88,8 @@ export default function ExplorePage() {
 
     // 필터링 및 정렬된 이벤트
     const filteredEvents = useMemo(() => {
-        let events = [...allEvents];
+        // 공식 행사와 사용자 등록 행사 병합
+        let events = [...allEvents, ...userEvents];
 
         // 검색
         if (searchQuery) {
@@ -167,7 +183,7 @@ export default function ExplorePage() {
         }
 
         return events;
-    }, [searchQuery, filters, sort, allEvents]);
+    }, [searchQuery, filters, sort, allEvents, userEvents]);
 
     // 활성 필터 개수
     const activeFilterCount = Object.values(filters).filter((v) => v !== null && v !== false).length;
@@ -454,11 +470,30 @@ export default function ExplorePage() {
                 )}
             </div>
 
+            {/* 행사 등록 FAB 버튼 */}
+            <button
+                onClick={handleRegisterClick}
+                className="fixed bottom-20 right-4 z-50 flex items-center gap-2 px-4 py-3 bg-primary text-white rounded-full shadow-lg hover:bg-primary/90 transition-colors md:bottom-6"
+                title="행사 등록"
+            >
+                <Plus className="h-5 w-5" />
+                <span className="text-sm font-medium">행사 등록</span>
+            </button>
+
+            {/* Event Registration Modal */}
+            <EventRegistrationModal
+                isOpen={showRegistrationModal}
+                onClose={() => setShowRegistrationModal(false)}
+                onSuccess={(eventId) => {
+                    console.log("Event registered:", eventId);
+                }}
+            />
+
             {/* Login Prompt Modal */}
             <LoginPromptModal
                 isOpen={showLoginPrompt}
                 onClose={() => setShowLoginPrompt(false)}
-                action="찜하기"
+                action="행사 등록"
             />
         </div>
     );

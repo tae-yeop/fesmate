@@ -82,7 +82,7 @@ export default function CommunityPage() {
     const router = useRouter();
     const { user } = useAuth();
     const { isLoggedIn: isDevLoggedIn, mockUserId } = useDevContext();
-    const { toggleHelpful, isHelpful, getHelpfulCount } = useHelpful();
+    const { toggleHelpful, isHelpful, getHelpfulCount, isOwnPost: isOwnPostForHelpful } = useHelpful();
     const { isBlocked } = useBlock();
     const { allCrews, myCrews, joinCrew, isMember, getCrewStats } = useCrew();
     const { hasRequested } = useJoin();
@@ -670,14 +670,20 @@ export default function CommunityPage() {
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            toggleHelpful(post.id);
+                                            if (!isOwnPostForHelpful(post.userId)) {
+                                                toggleHelpful(post.id, post.userId);
+                                            }
                                         }}
+                                        disabled={isOwnPostForHelpful(post.userId)}
                                         className={cn(
                                             "flex items-center gap-1 transition-colors",
-                                            isHelpful(post.id)
-                                                ? "text-primary font-medium"
-                                                : "hover:text-primary"
+                                            isOwnPostForHelpful(post.userId)
+                                                ? "opacity-50 cursor-not-allowed"
+                                                : isHelpful(post.id)
+                                                    ? "text-primary font-medium"
+                                                    : "hover:text-primary"
                                         )}
+                                        title={isOwnPostForHelpful(post.userId) ? "내 글에는 도움됨을 표시할 수 없습니다" : undefined}
                                     >
                                         <ThumbsUp className={cn("h-3 w-3", isHelpful(post.id) && "fill-current")} />
                                         {getHelpfulCount(post.id, post.helpfulCount)} 도움됨

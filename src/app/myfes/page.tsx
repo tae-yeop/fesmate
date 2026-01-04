@@ -24,8 +24,9 @@ import {
     UsersRound,
     Plus,
     Ticket,
+    Eye,
 } from "lucide-react";
-import { MOCK_EVENTS, MOCK_POSTS } from "@/lib/mock-data";
+import { MOCK_EVENTS, MOCK_POSTS, getSlotsByEventId } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { Event, getHubMode } from "@/types/event";
 import { useWishlist } from "@/lib/wishlist-context";
@@ -40,10 +41,14 @@ import {
     BadgeCategory,
 } from "@/types/badge";
 import { useTicketBook } from "@/lib/ticketbook-context";
-import { TicketGrid, TicketViewer, TicketUploadModal, TicketEditorModal } from "@/components/ticketbook";
+import { TicketGrid, TicketViewer, TicketUploadModal, TicketEditorModal, ShareModal, TicketbookShareModal } from "@/components/ticketbook";
 import { Ticket as TicketType } from "@/types/ticketbook";
 import { useDevContext } from "@/lib/dev-context";
+import { useAuth } from "@/lib/auth-context";
 import { LoginPromptModal } from "@/components/auth";
+import { CrewTimetableOverlay } from "@/components/crew";
+import { ReportGenerator } from "@/components/report";
+import { Crew } from "@/types/crew";
 
 type TimelineStatus = "upcoming" | "live" | "past";
 type FilterType = "all" | "wishlist" | "attended" | "review_pending";
@@ -91,10 +96,28 @@ export default function MyFesPage() {
     const [uploadModalOpen, setUploadModalOpen] = useState(false);
     const [editorOpen, setEditorOpen] = useState(false);
     const [editingTicket, setEditingTicket] = useState<TicketType | null>(null);
+    const [shareModalOpen, setShareModalOpen] = useState(false);
+    const [sharingTicket, setSharingTicket] = useState<TicketType | null>(null);
 
-    // 로그인 상태 확인
-    const { isLoggedIn } = useDevContext();
+    // 연간 리포트 상태
+    const [reportOpen, setReportOpen] = useState(false);
+
+    // 티켓북 전체 공유 모달 상태
+    const [ticketbookShareOpen, setTicketbookShareOpen] = useState(false);
+
+    // 로그인 상태 확인 (실제 Auth + Dev 모드)
+    const { isLoggedIn: isDevLoggedIn } = useDevContext();
+    const { user: authUser } = useAuth();
+    const isLoggedIn = !!authUser || isDevLoggedIn;
     const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+
+    // 크루 타임테이블 오버레이 상태
+    const [overlayCrewId, setOverlayCrewId] = useState<string | null>(null);
+    const [overlayEventId, setOverlayEventId] = useState<string | null>(null);
+    const overlayCrewData = useMemo(() => {
+        if (!overlayCrewId) return null;
+        return myCrews.find(c => c.id === overlayCrewId) || null;
+    }, [overlayCrewId, myCrews]);
 
     const now = new Date();
 
@@ -325,6 +348,43 @@ export default function MyFesPage() {
         return Array.from(years).sort((a, b) => b - a);
     }, [attendedEvents]);
 
+    // 크루별 공통 행사 (예정/진행중인 것만)
+    const getCrewSharedEvents = useMemo(() => {
+        return (crewId: string) => {
+            const stats = getCrewStats(crewId);
+            // 크루 통계에서 행사 목록 가져오기 (찜한 행사 중 예정/진행중)
+            // 실제로는 크루 멤버들의 찜 데이터를 교차해야 하지만,
+            // Mock에서는 간단히 처리
+            const sharedEvents: { id: string; title: string; startAt: Date }[] = [];
+
+            // timelineEvents에서 예정/진행중인 것 중 크루 멤버가 2명 이상 찜한 것
+            timelineEvents
+                .filter(e => e.timelineStatus === "upcoming" || e.timelineStatus === "live")
+                .slice(0, 3)
+                .forEach(event => {
+                    sharedEvents.push({
+                        id: event.id,
+                        title: event.title,
+                        startAt: new Date(event.startAt),
+                    });
+                });
+
+            return sharedEvents;
+        };
+    }, [timelineEvents, getCrewStats]);
+
+    // 함께 보기 열기
+    const openCrewOverlay = (crewId: string, eventId: string) => {
+        setOverlayCrewId(crewId);
+        setOverlayEventId(eventId);
+    };
+
+    // 함께 보기 닫기
+    const closeCrewOverlay = () => {
+        setOverlayCrewId(null);
+        setOverlayEventId(null);
+    };
+
     return (
         <div className="min-h-screen bg-background pb-20">
             {/* 헤더 */}
@@ -435,10 +495,7 @@ export default function MyFesPage() {
                         {activeSubTab === "gonglog" && totalAttendedCount > 0 && (
                             <button
                                 className="rounded-full border px-3 py-1 text-xs font-medium hover:bg-accent flex items-center gap-1"
-                                onClick={() => {
-                                    // TODO: 공유 기능
-                                    alert("공유 기능은 준비 중입니다!");
-                                }}
+                                onClick={() => setReportOpen(true)}
                             >
                                 <Share2 className="h-3 w-3" />
                                 공유
@@ -557,6 +614,26 @@ export default function MyFesPage() {
             {/* ===== 내 일정 탭 ===== */}
             {activeSubTab === "schedule" && (
             <>
+            {/* 비로그인 상태 */}
+            {!isLoggedIn ? (
+                <div className="text-center py-16 px-4">
+                    <div className="h-20 w-20 rounded-full bg-purple-100 flex items-center justify-center mx-auto mb-4">
+                        <Calendar className="h-10 w-10 text-purple-500" />
+                    </div>
+                    <h2 className="text-lg font-bold mb-2">나의 일정</h2>
+                    <p className="text-muted-foreground mb-6">
+                        찜한 행사와 다녀온 행사를 한눈에 볼 수 있어요.<br />
+                        로그인하면 나만의 일정을 관리할 수 있어요.
+                    </p>
+                    <Link
+                        href="/login"
+                        className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-6 py-3 font-medium hover:opacity-90 transition-opacity"
+                    >
+                        로그인하기
+                    </Link>
+                </div>
+            ) : (
+            <>
             {/* 오늘로 이동 버튼 */}
             <button
                 onClick={scrollToToday}
@@ -650,11 +727,31 @@ export default function MyFesPage() {
             </div>
             </>
             )}
+            </>
+            )}
 
             {/* ===== 내 크루 탭 ===== */}
             {activeSubTab === "crew" && (
             <div className="px-4 py-6 space-y-4">
-                {myCrews.length > 0 ? (
+                {/* 비로그인 상태 */}
+                {!isLoggedIn ? (
+                    <div className="text-center py-16">
+                        <div className="h-20 w-20 rounded-full bg-purple-100 flex items-center justify-center mx-auto mb-4">
+                            <UsersRound className="h-10 w-10 text-purple-500" />
+                        </div>
+                        <h2 className="text-lg font-bold mb-2">나의 크루</h2>
+                        <p className="text-muted-foreground mb-6">
+                            함께 공연 다니는 크루에 가입하세요.<br />
+                            로그인하면 크루를 만들고 관리할 수 있어요.
+                        </p>
+                        <Link
+                            href="/login"
+                            className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-6 py-3 font-medium hover:opacity-90 transition-opacity"
+                        >
+                            로그인하기
+                        </Link>
+                    </div>
+                ) : myCrews.length > 0 ? (
                     <>
                         {/* 크루 목록 */}
                         {myCrews.map((crew) => {
@@ -719,6 +816,38 @@ export default function MyFesPage() {
                                         </div>
                                     )}
 
+                                    {/* 함께 보기 (공통 행사) */}
+                                    {(() => {
+                                        const sharedEvents = getCrewSharedEvents(crew.id);
+                                        if (sharedEvents.length === 0) return null;
+                                        return (
+                                            <div className="px-4 pb-3">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                                        <Eye className="h-3 w-3" />
+                                                        함께 보기
+                                                    </p>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {sharedEvents.map((event) => (
+                                                        <button
+                                                            key={event.id}
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                openCrewOverlay(crew.id, event.id);
+                                                            }}
+                                                            className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                                                        >
+                                                            <Eye className="h-3 w-3" />
+                                                            {event.title.length > 12 ? event.title.slice(0, 12) + "..." : event.title}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+
                                     {/* 통계 */}
                                     <div className="flex border-t divide-x">
                                         <div className="flex-1 py-2.5 text-center">
@@ -773,6 +902,26 @@ export default function MyFesPage() {
             {/* ===== 공연로그 탭 ===== */}
             {activeSubTab === "gonglog" && (
             <div className="px-4 py-6 space-y-6">
+                {/* 비로그인 상태 */}
+                {!isLoggedIn ? (
+                    <div className="text-center py-16">
+                        <div className="h-20 w-20 rounded-full bg-purple-100 flex items-center justify-center mx-auto mb-4">
+                            <BarChart3 className="h-10 w-10 text-purple-500" />
+                        </div>
+                        <h2 className="text-lg font-bold mb-2">나의 공연로그</h2>
+                        <p className="text-muted-foreground mb-6">
+                            다녀온 공연의 통계와 배지를 확인하세요.<br />
+                            로그인하면 공연로그를 볼 수 있어요.
+                        </p>
+                        <Link
+                            href="/login"
+                            className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-6 py-3 font-medium hover:opacity-90 transition-opacity"
+                        >
+                            로그인하기
+                        </Link>
+                    </div>
+                ) : (
+                <>
                 {/* 연도 선택 */}
                 {availableYears.length > 0 && (
                     <div className="flex items-center gap-2">
@@ -1117,6 +1266,8 @@ export default function MyFesPage() {
                         </Link>
                     </div>
                 )}
+                </>
+                )}
             </div>
             )}
 
@@ -1154,11 +1305,22 @@ export default function MyFesPage() {
                                     다녀온 공연의 티켓을 사진으로 보관하세요
                                 </p>
                             </div>
-                            {sortedTickets.length > 0 && (
-                                <span className="text-sm text-muted-foreground">
-                                    총 {sortedTickets.length}장
-                                </span>
-                            )}
+                            <div className="flex items-center gap-2">
+                                {sortedTickets.length > 0 && (
+                                    <>
+                                        <button
+                                            onClick={() => setTicketbookShareOpen(true)}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                                        >
+                                            <Share2 className="h-4 w-4" />
+                                            전체 공유
+                                        </button>
+                                        <span className="text-sm text-muted-foreground">
+                                            총 {sortedTickets.length}장
+                                        </span>
+                                    </>
+                                )}
+                            </div>
                         </div>
 
                         {/* 티켓 그리드 */}
@@ -1210,6 +1372,10 @@ export default function MyFesPage() {
                     setViewerOpen(false);
                     setEditorOpen(true);
                 }}
+                onShare={(ticket) => {
+                    setSharingTicket(ticket);
+                    setShareModalOpen(true);
+                }}
             />
 
             {/* 티켓 업로드 모달 */}
@@ -1239,6 +1405,16 @@ export default function MyFesPage() {
                     }}
                 />
             )}
+
+            {/* 티켓 공유 모달 */}
+            <ShareModal
+                isOpen={shareModalOpen}
+                onClose={() => {
+                    setShareModalOpen(false);
+                    setSharingTicket(null);
+                }}
+                ticket={sharingTicket}
+            />
 
             {/* 배지란? 모달 */}
             {showBadgeInfo && (
@@ -1358,6 +1534,31 @@ export default function MyFesPage() {
                     </div>
                 </div>
             )}
+
+            {/* 크루 타임테이블 오버레이 */}
+            {overlayCrewData && overlayEventId && (
+                <CrewTimetableOverlay
+                    crew={overlayCrewData}
+                    eventId={overlayEventId}
+                    slots={getSlotsByEventId(overlayEventId)}
+                    isOpen={true}
+                    onClose={closeCrewOverlay}
+                />
+            )}
+
+            {/* 연간 리포트 생성기 */}
+            <ReportGenerator
+                isOpen={reportOpen}
+                onClose={() => setReportOpen(false)}
+                year={selectedYear}
+            />
+
+            {/* 티켓북 전체 공유 모달 */}
+            <TicketbookShareModal
+                isOpen={ticketbookShareOpen}
+                onClose={() => setTicketbookShareOpen(false)}
+                tickets={sortedTickets}
+            />
         </div>
     );
 }

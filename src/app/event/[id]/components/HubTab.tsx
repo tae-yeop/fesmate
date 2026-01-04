@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { ThumbsUp, Users, MessageSquare, MapPin, ExternalLink, Settings, User, Star, Video, FileText, TrendingUp, Camera } from "lucide-react";
+import { ThumbsUp, Users, MessageSquare, MapPin, ExternalLink, Settings, User, Star, Video, FileText, TrendingUp, Camera, Music, Radio } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Event, getHubMode, Slot, HubMode } from "@/types/event";
 import { Post, POST_TYPE_LABELS } from "@/types/post";
@@ -18,6 +18,7 @@ import { useBlock } from "@/lib/block-context";
 import { useComment } from "@/lib/comment-context";
 import { MOCK_USERS } from "@/lib/mock-data";
 import { PostDetailModal } from "@/components/posts/PostDetailModal";
+import { hasCallGuideForArtist, findCallGuideArtistByName, getMockSongsByArtist } from "@/lib/mock-call-guide";
 
 interface HubTabProps {
     event: Event;
@@ -28,7 +29,7 @@ interface HubTabProps {
 export function HubTab({ event, posts, slots }: HubTabProps) {
     const { user } = useAuth();
     const { getNow, overrideMode, isDevMode, isLoggedIn: isDevLoggedIn } = useDevContext();
-    const { toggleHelpful, isHelpful, getHelpfulCount } = useHelpful();
+    const { toggleHelpful, isHelpful, getHelpfulCount, isOwnPost } = useHelpful();
     const { isBlocked } = useBlock();
     const { getCommentCount } = useComment();
     const now = getNow();
@@ -107,6 +108,29 @@ export function HubTab({ event, posts, slots }: HubTabProps) {
         const next = slots.find(s => new Date(s.startAt).getTime() > now.getTime());
         return { currentSlot: current, nextSlot: next };
     }, [slots, now]);
+
+    // 콜가이드 정보 계산 (현재/다음 슬롯의 아티스트)
+    const callGuideInfo = useMemo(() => {
+        const getArtistCallGuide = (slot: Slot | undefined) => {
+            if (!slot?.artist?.name) return null;
+            const artist = findCallGuideArtistByName(slot.artist.name);
+            if (!artist) return null;
+            const songs = getMockSongsByArtist(artist.id);
+            const songsWithGuide = songs.filter(s => s.hasCallGuide);
+            if (songsWithGuide.length === 0) return null;
+            return {
+                artistId: artist.id,
+                artistName: slot.artist.name,
+                songCount: songsWithGuide.length,
+                firstSongId: songsWithGuide[0].id,
+            };
+        };
+
+        return {
+            current: getArtistCallGuide(currentSlot),
+            next: getArtistCallGuide(nextSlot),
+        };
+    }, [currentSlot, nextSlot]);
 
     // RECAP 모드 요약 데이터 (메모이제이션)
     const recapSummary = useMemo(() => {
@@ -240,6 +264,30 @@ export function HubTab({ event, posts, slots }: HubTabProps) {
                 </div>
             )}
 
+            {/* LIVE 모드 콜가이드 배너 */}
+            {mode === "LIVE" && callGuideInfo.current && (
+                <Link
+                    href={`/call-guide/${callGuideInfo.current.firstSongId}`}
+                    className="flex items-center gap-3 rounded-xl bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 p-4 hover:from-primary/20 hover:to-primary/10 transition-all group"
+                >
+                    <div className="flex items-center justify-center h-10 w-10 rounded-full bg-primary/20 group-hover:bg-primary/30 transition-colors">
+                        <Radio className="h-5 w-5 text-primary animate-pulse" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                            <span className="px-1.5 py-0.5 rounded bg-primary text-primary-foreground text-[10px] font-bold">
+                                LIVE
+                            </span>
+                            <h4 className="font-bold text-sm truncate">{callGuideInfo.current.artistName}</h4>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            콜가이드로 함께 호응하기 ({callGuideInfo.current.songCount}곡)
+                        </p>
+                    </div>
+                    <ExternalLink className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />
+                </Link>
+            )}
+
             {/* 4박스 요약 */}
             <div className="grid grid-cols-2 gap-3">
                 {/* 실시간 */}
@@ -255,7 +303,7 @@ export function HubTab({ event, posts, slots }: HubTabProps) {
                     )}
                 </div>
 
-                {/* 타임테이블 */}
+                {/* 타임테이블 + 콜가이드 */}
                 <div className="rounded-lg border bg-card p-3">
                     <h4 className="text-xs font-bold text-muted-foreground mb-2">Now/Next</h4>
                     {currentSlot ? (
@@ -264,11 +312,31 @@ export function HubTab({ event, posts, slots }: HubTabProps) {
                             <p className="text-xs text-muted-foreground">
                                 {formatTime(currentSlot.startAt)} - {formatTime(currentSlot.endAt)}
                             </p>
+                            {/* 콜가이드 링크 (LIVE 모드, 현재 슬롯) */}
+                            {mode === "LIVE" && callGuideInfo.current && (
+                                <Link
+                                    href={`/call-guide/${callGuideInfo.current.firstSongId}`}
+                                    className="mt-2 flex items-center gap-1 text-xs text-primary hover:underline"
+                                >
+                                    <Music className="h-3 w-3" />
+                                    콜가이드 ({callGuideInfo.current.songCount}곡)
+                                </Link>
+                            )}
                         </>
                     ) : nextSlot ? (
                         <>
                             <p className="text-sm font-medium line-clamp-1">다음: {nextSlot.title || nextSlot.artist?.name}</p>
                             <p className="text-xs text-muted-foreground">{formatTime(nextSlot.startAt)}</p>
+                            {/* 콜가이드 링크 (다음 슬롯) */}
+                            {callGuideInfo.next && (
+                                <Link
+                                    href={`/call-guide/${callGuideInfo.next.firstSongId}`}
+                                    className="mt-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-primary hover:underline"
+                                >
+                                    <Music className="h-3 w-3" />
+                                    콜가이드 미리보기
+                                </Link>
+                            )}
                         </>
                     ) : (
                         <p className="text-sm text-muted-foreground">타임테이블 없음</p>
@@ -366,14 +434,20 @@ export function HubTab({ event, posts, slots }: HubTabProps) {
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            toggleHelpful(post.id);
+                                            if (!isOwnPost(post.userId)) {
+                                                toggleHelpful(post.id, post.userId);
+                                            }
                                         }}
+                                        disabled={isOwnPost(post.userId)}
                                         className={cn(
                                             "flex items-center gap-1 transition-colors",
-                                            isHelpful(post.id)
-                                                ? "text-primary font-medium"
-                                                : "hover:text-primary"
+                                            isOwnPost(post.userId)
+                                                ? "opacity-50 cursor-not-allowed"
+                                                : isHelpful(post.id)
+                                                    ? "text-primary font-medium"
+                                                    : "hover:text-primary"
                                         )}
+                                        title={isOwnPost(post.userId) ? "내 글에는 도움됨을 표시할 수 없습니다" : undefined}
                                     >
                                         <ThumbsUp className={cn("h-3 w-3", isHelpful(post.id) && "fill-current")} />
                                         {getHelpfulCount(post.id, post.helpfulCount)} 도움됨
