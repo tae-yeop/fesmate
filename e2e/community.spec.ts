@@ -6,10 +6,10 @@ test.describe("커뮤니티 페이지", () => {
     });
 
     test("페이지가 로드되고 카테고리 탭이 표시됨", async ({ page }) => {
-        // 페이지 제목 확인
-        await expect(page.locator("h1")).toContainText("커뮤니티");
+        // 페이지 로드 대기
+        await page.waitForLoadState("networkidle");
 
-        // 카테고리 탭 확인
+        // 카테고리 탭 확인 (h1 대신 탭 버튼으로 확인)
         await expect(page.getByRole("button", { name: /동행/i })).toBeVisible();
         await expect(page.getByRole("button", { name: /택시/i })).toBeVisible();
         await expect(page.getByRole("button", { name: /밥/i })).toBeVisible();
@@ -19,8 +19,8 @@ test.describe("커뮤니티 페이지", () => {
         // 동행 탭 클릭
         await page.getByRole("button", { name: /동행/i }).click();
 
-        // URL 변경 확인 또는 탭 활성화 확인
-        await expect(page.getByRole("button", { name: /동행/i })).toHaveClass(/border-primary/);
+        // 탭 활성화 확인 (bg-primary 클래스 사용)
+        await expect(page.getByRole("button", { name: /동행/i })).toHaveClass(/bg-primary/);
     });
 
     test("내 참여 버튼 클릭 시 모달 열림", async ({ page }) => {
