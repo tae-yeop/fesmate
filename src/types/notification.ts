@@ -50,9 +50,38 @@ export interface Notification {
     // 상태
     isRead: boolean;
 
+    // 중복 방지 키 (같은 키가 있으면 알림 통합)
+    dedupeKey?: string;
+    // 통합된 알림 수 (dedupeKey로 묶인 경우)
+    groupCount?: number;
+
+    // Quiet Hours 중 보류되었는지 여부
+    deferredFromQuietHours?: boolean;
+
     // 메타
     createdAt: Date;
 }
+
+/** Quiet Hours 설정 (밤 22:00 ~ 아침 08:00) */
+export const QUIET_HOURS = {
+    start: 22, // 22:00
+    end: 8,    // 08:00
+} as const;
+
+/** 현재 시간이 Quiet Hours인지 확인 */
+export function isQuietHours(date: Date = new Date()): boolean {
+    const hour = date.getHours();
+    // 22:00 ~ 23:59 또는 00:00 ~ 07:59
+    return hour >= QUIET_HOURS.start || hour < QUIET_HOURS.end;
+}
+
+/** Quiet Hours 제외되는 알림 타입 (긴급 알림) */
+export const URGENT_NOTIFICATION_TYPES: NotificationType[] = [
+    "event_cancelled",
+    "event_time_changed",
+    "participation_canceled",
+    "participation_reminder_1h", // 1시간 전 알림은 Quiet Hours 무시
+];
 
 /** 알림 타입별 아이콘/색상 매핑 */
 export const NOTIFICATION_CONFIG: Record<NotificationType, {

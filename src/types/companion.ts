@@ -5,6 +5,7 @@ export type CompanionRequestStatus =
     | "pending"   // 대기 중
     | "accepted"  // 수락됨
     | "declined"  // 거절됨
+    | "canceled"  // 취소됨
     | "expired";  // 만료됨
 
 /** 동행 제안 */

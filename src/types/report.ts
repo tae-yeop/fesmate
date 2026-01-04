@@ -12,7 +12,7 @@ export type ReportReason =
     | "other";         // 기타
 
 /** 신고 대상 타입 */
-export type ReportTargetType = "post" | "comment" | "user";
+export type ReportTargetType = "post" | "comment" | "user" | "call_guide" | "call_guide_entry";
 
 /** 신고 처리 상태 */
 export type ReportStatus =

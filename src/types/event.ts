@@ -101,6 +101,32 @@ export interface Artist {
     popularSongs?: string[];
 }
 
+/** 슬롯 리뷰 타입 */
+export type SlotReviewType = "review" | "highlight" | "fancam";
+
+/** 슬롯 연결 콘텐츠 (리뷰/영상) */
+export interface SlotContent {
+    id: string;
+    slotId: string;
+    type: SlotReviewType;
+    /** 글 ID (리뷰인 경우) */
+    postId?: string;
+    /** YouTube URL (영상인 경우) */
+    youtubeUrl?: string;
+    /** YouTube 비디오 ID (youtubeUrl에서 추출) */
+    youtubeId?: string;
+    /** 제목 */
+    title?: string;
+    /** 썸네일 URL */
+    thumbnailUrl?: string;
+    /** 작성자 ID */
+    authorId: string;
+    /** 작성일 */
+    createdAt: Date;
+    /** 도움됨 수 */
+    helpfulCount: number;
+}
+
 /** 타임테이블 슬롯 */
 export interface Slot {
     id: string;
@@ -112,6 +138,10 @@ export interface Slot {
     startAt: Date;
     endAt: Date;
     title?: string; // 아티스트가 아닌 경우 (예: "티켓 박스 오픈")
+    /** 연결된 콘텐츠 (리뷰/영상) */
+    contents?: SlotContent[];
+    /** 연결된 콜가이드 ID */
+    callGuideId?: string;
 }
 
 /** 행사 통계 */

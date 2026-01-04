@@ -47,6 +47,11 @@ export interface Post {
     type: PostType;
     status: PostStatus;
 
+    // 신고 누적으로 인한 숨김 처리
+    isHidden?: boolean;       // 숨김 여부
+    reportCount?: number;     // 누적 신고 수
+    hiddenAt?: Date;          // 숨김 처리 시각
+
     // 내용
     content: string;
     images?: string[];
