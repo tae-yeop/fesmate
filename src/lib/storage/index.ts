@@ -19,6 +19,7 @@ export * from "./migration";
 // ============================================================
 import { ImageStorageAdapter } from "@/types/image";
 import { getLocalImageStorage } from "./local-image-storage";
+import { getSupabaseImageStorage, BucketName } from "./supabase-image-storage";
 
 // 현재 사용할 저장소 타입 (환경변수로 제어 가능)
 type StorageType = "local" | "supabase";
@@ -37,16 +38,17 @@ const STORAGE_TYPE: StorageType =
  *
  * 저장소 전환 방법:
  * 1. .env.local에 NEXT_PUBLIC_IMAGE_STORAGE=supabase 설정
- * 2. supabase-image-storage.ts 구현
- * 3. 아래 switch문에 케이스 추가
+ * 2. 또는 getImageStorage("supabase") 로 직접 지정
  */
-export function getImageStorage(): ImageStorageAdapter {
-  switch (STORAGE_TYPE) {
+export function getImageStorage(
+  type?: StorageType,
+  bucketName?: BucketName
+): ImageStorageAdapter {
+  const storageType = type || STORAGE_TYPE;
+
+  switch (storageType) {
     case "supabase":
-      // TODO: Supabase Storage 구현 후 활성화
-      // return getSupabaseImageStorage();
-      console.warn("Supabase Storage 미구현, Local Storage 사용");
-      return getLocalImageStorage();
+      return getSupabaseImageStorage(bucketName);
 
     case "local":
     default:
@@ -57,3 +59,4 @@ export function getImageStorage(): ImageStorageAdapter {
 // 유틸리티 함수 re-export
 export * from "./image-utils";
 export { getLocalImageStorage } from "./local-image-storage";
+export { getSupabaseImageStorage, type BucketName } from "./supabase-image-storage";
