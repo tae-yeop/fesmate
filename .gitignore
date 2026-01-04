@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/playwright-report/
+/test-results/
 
 # next.js
 /.next/
@@ -43,3 +45,6 @@ next-env.d.ts
 
 # progress
 /progress
+
+# claude code local settings
+.claude/settings.local.json
