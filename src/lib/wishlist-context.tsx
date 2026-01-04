@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useCallback, useEffect, useMemo, R
 import { useDevContext } from "./dev-context";
 import { useAuth } from "./auth-context";
 import { createUserAdapter, DOMAINS } from "./storage";
+import { isValidUUID } from "./utils";
 import {
     getWishlistEventIds,
     getAttendedEventIds,
@@ -172,10 +173,11 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
             return next;
         });
 
-        // 실제 사용자: Supabase에 저장
-        if (isRealUser && realUserId) {
+        // 실제 사용자 + 유효한 UUID 이벤트: Supabase에 저장
+        // Mock 이벤트 ID(e1, e2 등)는 Supabase에 없으므로 건너뜀
+        if (isRealUser && realUserId && isValidUUID(eventId)) {
             toggleUserWishlist(realUserId, eventId).catch((error) => {
-                console.error("[WishlistContext] toggleWishlist failed:", error);
+                console.error("[WishlistContext] toggleWishlist failed:", error.message || error);
                 // 롤백
                 setWishlist((prev) => {
                     const next = new Set(prev);
@@ -188,7 +190,7 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
                 });
             });
         }
-        // Dev 모드: localStorage는 useEffect에서 자동 저장
+        // Dev 모드 또는 Mock 이벤트: localStorage는 useEffect에서 자동 저장
     }, [currentUserId, isRealUser, realUserId, wishlist]);
 
     // 다녀옴 토글
@@ -208,10 +210,11 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
             return next;
         });
 
-        // 실제 사용자: Supabase에 저장
-        if (isRealUser && realUserId) {
+        // 실제 사용자 + 유효한 UUID 이벤트: Supabase에 저장
+        // Mock 이벤트 ID(e1, e2 등)는 Supabase에 없으므로 건너뜀
+        if (isRealUser && realUserId && isValidUUID(eventId)) {
             toggleUserAttended(realUserId, eventId).catch((error) => {
-                console.error("[WishlistContext] toggleAttended failed:", error);
+                console.error("[WishlistContext] toggleAttended failed:", error.message || error);
                 // 롤백
                 setAttended((prev) => {
                     const next = new Set(prev);
@@ -224,7 +227,7 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
                 });
             });
         }
-        // Dev 모드: localStorage는 useEffect에서 자동 저장
+        // Dev 모드 또는 Mock 이벤트: localStorage는 useEffect에서 자동 저장
     }, [currentUserId, isRealUser, realUserId, attended]);
 
     // 상태 확인

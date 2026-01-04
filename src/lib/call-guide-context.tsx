@@ -25,6 +25,7 @@ import {
     CreateCallGuideEntryInput,
     CreateSongInput,
 } from "@/types/call-guide";
+import { ReportReason } from "@/types/report";
 import { createSharedAdapter, DOMAINS } from "./storage";
 import { useAuth } from "./auth-context";
 import { useDevContext } from "./dev-context";
@@ -76,6 +77,16 @@ interface CallGuideContextType {
     versions: CallGuideVersion[];
     getVersionHistory: (callGuideId: string) => CallGuideVersion[];
 
+    // 롤백
+    rollbackToVersion: (songId: string, targetVersion: CallGuideVersion, userId: string) => Promise<boolean>;
+
+    // 신고
+    reportCallGuide: (callGuideId: string, reason: ReportReason, detail: string) => Promise<boolean>;
+    reportEntry: (callGuideId: string, entryId: string, reason: ReportReason, detail: string) => Promise<boolean>;
+    getReportCount: (callGuideId: string) => number;
+    getEntryReportCount: (entryId: string) => number;
+    isCallGuideHidden: (callGuideId: string) => boolean;
+
     // 도움됨 (콜가이드 전체)
     toggleHelpful: (callGuideId: string) => Promise<void>;
     isHelpful: (callGuideId: string) => boolean;
@@ -120,6 +131,20 @@ const helpfulAdapter = createSharedAdapter<CallGuideHelpfulData>({
     domain: DOMAINS.CALLGUIDE_HELPFUL,
 });
 
+// 신고 데이터 타입
+interface CallGuideReportData {
+    callGuideReports: Record<string, { reasons: ReportReason[]; count: number }>;
+    entryReports: Record<string, { reasons: ReportReason[]; count: number }>;
+    userReportedGuides: string[];
+    userReportedEntries: string[];
+}
+const reportsAdapter = createSharedAdapter<CallGuideReportData>({
+    domain: DOMAINS.CALLGUIDE_REPORTS,
+});
+
+// 숨김 임계값 (신고 3회 이상 시 숨김)
+const HIDE_THRESHOLD = 3;
+
 // UUID 생성 헬퍼
 function generateId(): string {
     return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -138,6 +163,15 @@ export function CallGuideProvider({ children }: { children: React.ReactNode }) {
     // 개별 엔트리 도움됨
     const [helpfulEntries, setHelpfulEntries] = useState<Set<string>>(new Set());
     const [helpfulEntryDelta, setHelpfulEntryDelta] = useState<Map<string, number>>(new Map());
+    // 신고 데이터
+    const [callGuideReports, setCallGuideReports] = useState<
+        Record<string, { reasons: ReportReason[]; count: number }>
+    >({});
+    const [entryReports, setEntryReports] = useState<
+        Record<string, { reasons: ReportReason[]; count: number }>
+    >({});
+    const [userReportedGuides, setUserReportedGuides] = useState<Set<string>>(new Set());
+    const [userReportedEntries, setUserReportedEntries] = useState<Set<string>>(new Set());
     const [isLoaded, setIsLoaded] = useState(false);
     const [isFromSupabase, setIsFromSupabase] = useState(false);
 
@@ -191,6 +225,15 @@ export function CallGuideProvider({ children }: { children: React.ReactNode }) {
             setHelpfulDelta(new Map(Object.entries(storedHelpful.delta || {})));
         }
 
+        // 신고 데이터 로드
+        const storedReports = reportsAdapter.get();
+        if (storedReports) {
+            setCallGuideReports(storedReports.callGuideReports || {});
+            setEntryReports(storedReports.entryReports || {});
+            setUserReportedGuides(new Set(storedReports.userReportedGuides || []));
+            setUserReportedEntries(new Set(storedReports.userReportedEntries || []));
+        }
+
         setIsFromSupabase(false);
     }, []);
 
@@ -215,7 +258,13 @@ export function CallGuideProvider({ children }: { children: React.ReactNode }) {
             guides: Array.from(helpfulGuides),
             delta: Object.fromEntries(helpfulDelta),
         });
-    }, [songs, callGuides, versions, helpfulGuides, helpfulDelta, isLoaded, useSupabase]);
+        reportsAdapter.set({
+            callGuideReports,
+            entryReports,
+            userReportedGuides: Array.from(userReportedGuides),
+            userReportedEntries: Array.from(userReportedEntries),
+        });
+    }, [songs, callGuides, versions, helpfulGuides, helpfulDelta, callGuideReports, entryReports, userReportedGuides, userReportedEntries, isLoaded, useSupabase]);
 
     // 새로고침
     const refreshCallGuides = useCallback(async () => {
@@ -575,6 +624,124 @@ export function CallGuideProvider({ children }: { children: React.ReactNode }) {
         [versions]
     );
 
+    // 롤백
+    const rollbackToVersion = useCallback(
+        async (songId: string, targetVersion: CallGuideVersion, userId: string): Promise<boolean> => {
+            const guide = callGuides.find((g) => g.songId === songId);
+            if (!guide) return false;
+
+            try {
+                // 롤백도 updateCallGuide를 통해 처리 (버전 히스토리에 기록됨)
+                const result = await updateCallGuide(
+                    songId,
+                    targetVersion.entries,
+                    userId,
+                    `v${targetVersion.version}에서 롤백`
+                );
+                return result !== null;
+            } catch (error) {
+                console.error("[CallGuideContext] Failed to rollback:", error);
+                return false;
+            }
+        },
+        [callGuides, updateCallGuide]
+    );
+
+    // 콜가이드 신고
+    const reportCallGuide = useCallback(
+        async (callGuideId: string, reason: ReportReason, detail: string): Promise<boolean> => {
+            // 이미 신고한 경우 중복 방지
+            if (userReportedGuides.has(callGuideId)) {
+                console.warn("[CallGuideContext] Already reported this call guide");
+                return false;
+            }
+
+            try {
+                // 신고 기록 추가
+                setCallGuideReports((prev) => {
+                    const existing = prev[callGuideId] || { reasons: [], count: 0 };
+                    return {
+                        ...prev,
+                        [callGuideId]: {
+                            reasons: [...existing.reasons, reason],
+                            count: existing.count + 1,
+                        },
+                    };
+                });
+
+                // 사용자 신고 기록
+                setUserReportedGuides((prev) => new Set([...prev, callGuideId]));
+
+                console.log("[CallGuideContext] Reported call guide:", { callGuideId, reason, detail });
+                return true;
+            } catch (error) {
+                console.error("[CallGuideContext] Failed to report call guide:", error);
+                return false;
+            }
+        },
+        [userReportedGuides]
+    );
+
+    // 개별 엔트리 신고
+    const reportEntry = useCallback(
+        async (callGuideId: string, entryId: string, reason: ReportReason, detail: string): Promise<boolean> => {
+            // 이미 신고한 경우 중복 방지
+            if (userReportedEntries.has(entryId)) {
+                console.warn("[CallGuideContext] Already reported this entry");
+                return false;
+            }
+
+            try {
+                // 신고 기록 추가
+                setEntryReports((prev) => {
+                    const existing = prev[entryId] || { reasons: [], count: 0 };
+                    return {
+                        ...prev,
+                        [entryId]: {
+                            reasons: [...existing.reasons, reason],
+                            count: existing.count + 1,
+                        },
+                    };
+                });
+
+                // 사용자 신고 기록
+                setUserReportedEntries((prev) => new Set([...prev, entryId]));
+
+                console.log("[CallGuideContext] Reported entry:", { callGuideId, entryId, reason, detail });
+                return true;
+            } catch (error) {
+                console.error("[CallGuideContext] Failed to report entry:", error);
+                return false;
+            }
+        },
+        [userReportedEntries]
+    );
+
+    // 콜가이드 신고 횟수 조회
+    const getReportCount = useCallback(
+        (callGuideId: string): number => {
+            return callGuideReports[callGuideId]?.count || 0;
+        },
+        [callGuideReports]
+    );
+
+    // 엔트리 신고 횟수 조회
+    const getEntryReportCount = useCallback(
+        (entryId: string): number => {
+            return entryReports[entryId]?.count || 0;
+        },
+        [entryReports]
+    );
+
+    // 콜가이드 숨김 여부 (신고 임계값 초과)
+    const isCallGuideHidden = useCallback(
+        (callGuideId: string): boolean => {
+            const count = callGuideReports[callGuideId]?.count || 0;
+            return count >= HIDE_THRESHOLD;
+        },
+        [callGuideReports]
+    );
+
     // 도움됨 토글
     const toggleHelpful = useCallback(
         async (callGuideId: string) => {
@@ -751,6 +918,12 @@ export function CallGuideProvider({ children }: { children: React.ReactNode }) {
             deleteEntry,
             versions,
             getVersionHistory,
+            rollbackToVersion,
+            reportCallGuide,
+            reportEntry,
+            getReportCount,
+            getEntryReportCount,
+            isCallGuideHidden,
             toggleHelpful,
             isHelpful,
             getHelpfulCount,
@@ -775,6 +948,12 @@ export function CallGuideProvider({ children }: { children: React.ReactNode }) {
             deleteEntry,
             versions,
             getVersionHistory,
+            rollbackToVersion,
+            reportCallGuide,
+            reportEntry,
+            getReportCount,
+            getEntryReportCount,
+            isCallGuideHidden,
             toggleHelpful,
             isHelpful,
             getHelpfulCount,

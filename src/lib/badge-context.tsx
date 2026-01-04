@@ -4,9 +4,17 @@ import { createContext, useContext, useState, useEffect, useMemo, useCallback, R
 import { EarnedBadge, BADGE_DEFINITIONS, BadgeDefinition } from "@/types/badge";
 import { useWishlist } from "./wishlist-context";
 import { useDevContext } from "./dev-context";
+import { useAuth } from "./auth-context";
 import { MOCK_EVENTS, MOCK_POSTS } from "./mock-data";
 import { Event } from "@/types/event";
 import { createUserAdapter, DOMAINS } from "./storage";
+import {
+    getUserBadgesDb,
+    awardBadges as awardBadgesDb,
+    DbUserBadge,
+    getPostCountByUser,
+    type PostCountStats,
+} from "./supabase/queries";
 
 interface BadgeStats {
     attendanceCount: number;
@@ -35,6 +43,22 @@ interface BadgeContextValue {
     stats: BadgeStats;
     /** 특정 사용자의 배지 목록 조회 */
     getUserBadges: (userId: string) => EarnedBadge[];
+    /** 로딩 상태 */
+    isLoading: boolean;
+    /** Supabase 연동 여부 */
+    isFromSupabase: boolean;
+}
+
+/**
+ * DB 데이터를 Context 타입으로 변환
+ */
+function transformDbToEarnedBadge(db: DbUserBadge): EarnedBadge {
+    return {
+        badgeId: db.badgeId,
+        earnedAt: db.earnedAt,
+        triggerEventId: db.triggerEventId,
+        triggerEventTitle: db.triggerEventTitle,
+    };
 }
 
 const BadgeContext = createContext<BadgeContextValue | null>(null);
@@ -96,13 +120,28 @@ function extractRegion(address: string): string {
 
 export function BadgeProvider({ children }: { children: ReactNode }) {
     const { attended } = useWishlist();
-    const { mockUserId } = useDevContext();
-    const currentUserId = mockUserId || "user1";
+    const { user: authUser } = useAuth();
+    const { mockUserId, isLoggedIn: isDevLoggedIn } = useDevContext();
+
+    // 실제 인증 사용자가 있으면 Supabase 사용, 없으면 Dev 모드 또는 비로그인
+    const realUserId = authUser?.id;
+    const isRealUser = !!realUserId;
+
+    // Dev 모드에서 mockUserId 사용
+    const devUserId = isDevLoggedIn ? (mockUserId || "user1") : null;
+
+    // 최종 사용자 ID (실제 > Dev > "user1")
+    const currentUserId = realUserId || devUserId || "user1";
 
     const [earnedBadges, setEarnedBadges] = useState<EarnedBadge[]>([]);
     const [newBadges, setNewBadges] = useState<BadgeDefinition[]>([]);
     const [isInitialized, setIsInitialized] = useState(false);
     const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isFromSupabase, setIsFromSupabase] = useState(false);
+
+    // Supabase 사용자의 글 통계 (배지 조건 계산용)
+    const [postStats, setPostStats] = useState<PostCountStats>({ totalCount: 0, reportCount: 0 });
 
     // Storage adapter (userId 변경 시 재생성)
     const badgeAdapter = useMemo(
@@ -110,9 +149,37 @@ export function BadgeProvider({ children }: { children: ReactNode }) {
         [currentUserId]
     );
 
-    // 사용자 변경 또는 초기 로드 시 storage에서 불러오기
+    // 사용자 변경 또는 초기 로드 시 데이터 불러오기
     useEffect(() => {
         if (loadedUserId !== currentUserId) {
+            // 실제 사용자: Supabase에서 로드
+            if (isRealUser && realUserId) {
+                setIsLoading(true);
+                // 배지와 글 통계를 병렬로 로드
+                Promise.all([
+                    getUserBadgesDb(realUserId),
+                    getPostCountByUser(realUserId),
+                ])
+                    .then(([dbBadges, dbPostStats]) => {
+                        setEarnedBadges(dbBadges.map(transformDbToEarnedBadge));
+                        setPostStats(dbPostStats);
+                        setIsFromSupabase(true);
+                    })
+                    .catch((error) => {
+                        console.error("[BadgeContext] Supabase load failed:", error);
+                        setEarnedBadges([]);
+                        setPostStats({ totalCount: 0, reportCount: 0 });
+                        setIsFromSupabase(false);
+                    })
+                    .finally(() => {
+                        setIsLoading(false);
+                        setLoadedUserId(currentUserId);
+                        setIsInitialized(true);
+                    });
+                return;
+            }
+
+            // Dev 모드: localStorage에서 로드
             const stored = badgeAdapter.get();
             if (stored) {
                 // 기존 배지 중 triggerEventTitle이 없는 것이 있으면 초기화
@@ -132,17 +199,19 @@ export function BadgeProvider({ children }: { children: ReactNode }) {
                 const mockBadges = MOCK_USER_BADGES[currentUserId] || [];
                 setEarnedBadges(mockBadges);
             }
+            // Dev 모드: 로컬 postStats 계산은 stats useMemo에서 처리
             setLoadedUserId(currentUserId);
             setIsInitialized(true);
+            setIsFromSupabase(false);
         }
-    }, [currentUserId, loadedUserId, badgeAdapter]);
+    }, [currentUserId, loadedUserId, badgeAdapter, isRealUser, realUserId]);
 
-    // Storage에 저장 (현재 사용자의 데이터만)
+    // Storage에 저장 (Dev 모드에서만)
     useEffect(() => {
-        if (isInitialized && loadedUserId === currentUserId) {
+        if (isInitialized && loadedUserId === currentUserId && !isRealUser) {
             badgeAdapter.set(earnedBadges);
         }
-    }, [earnedBadges, isInitialized, currentUserId, loadedUserId, badgeAdapter]);
+    }, [earnedBadges, isInitialized, currentUserId, loadedUserId, badgeAdapter, isRealUser]);
 
     // 다녀온 행사 목록
     const attendedEvents = useMemo(() => {
@@ -178,13 +247,19 @@ export function BadgeProvider({ children }: { children: ReactNode }) {
             }
         });
 
-        // 작성한 글 수 (Mock)
-        const postCount = MOCK_POSTS.filter(p => p.userId === "user1").length;
+        // 작성한 글 수
+        // - Supabase 사용자: postStats에서 로드된 값 사용
+        // - Dev/Mock 사용자: Mock 데이터에서 currentUserId 기준으로 계산
+        const postCount = isRealUser
+            ? postStats.totalCount
+            : MOCK_POSTS.filter(p => p.userId === currentUserId).length;
 
-        // 실시간 제보 수
-        const reportPostCount = MOCK_POSTS.filter(
-            p => p.userId === "user1" && ["gate", "md", "facility", "safety"].includes(p.type)
-        ).length;
+        // 실시간 제보 수 (gate, md, facility, safety)
+        const reportPostCount = isRealUser
+            ? postStats.reportCount
+            : MOCK_POSTS.filter(
+                p => p.userId === currentUserId && ["gate", "md", "facility", "safety"].includes(p.type)
+            ).length;
 
         // 도움됨 받은 수 (Mock - 임시로 0)
         const helpfulReceived = 0;
@@ -200,7 +275,7 @@ export function BadgeProvider({ children }: { children: ReactNode }) {
             helpfulReceived,
             reportPostCount,
         };
-    }, [attendedEvents]);
+    }, [attendedEvents, isRealUser, postStats, currentUserId]);
 
     // 배지 조건 체크
     const checkBadgeCondition = useCallback((badge: BadgeDefinition): boolean => {
@@ -302,8 +377,8 @@ export function BadgeProvider({ children }: { children: ReactNode }) {
         return { current: Math.min(current, conditionValue), max: conditionValue };
     }, [stats]);
 
-    // 로그인 상태 확인
-    const isLoggedIn = mockUserId !== null;
+    // 로그인 상태 확인 (실제 사용자 또는 Dev 모드)
+    const isLoggedIn = isRealUser || isDevLoggedIn;
 
     // 배지 획득 체크 및 업데이트 (로그인 상태에서만)
     useEffect(() => {
@@ -333,10 +408,30 @@ export function BadgeProvider({ children }: { children: ReactNode }) {
                 triggerEventTitle: latestEvent?.title,
             }));
 
+            // Optimistic update
             setEarnedBadges(prev => [...prev, ...newEarnedBadges]);
             setNewBadges(newlyEarned);
+
+            // 로그인 상태 + 실제 사용자: Supabase에 저장
+            if (isRealUser && realUserId) {
+                awardBadgesDb(
+                    realUserId,
+                    newEarnedBadges.map((b) => ({
+                        badgeId: b.badgeId,
+                        triggerEventId: b.triggerEventId,
+                        triggerEventTitle: b.triggerEventTitle,
+                    }))
+                ).catch((error) => {
+                    console.error("[BadgeContext] awardBadges failed:", error);
+                    // 롤백 (실패 시 추가한 배지 제거)
+                    const newBadgeIds = new Set(newEarnedBadges.map((b) => b.badgeId));
+                    setEarnedBadges((prev) =>
+                        prev.filter((b) => !newBadgeIds.has(b.badgeId))
+                    );
+                });
+            }
         }
-    }, [stats, isInitialized, isLoggedIn, earnedBadges, checkBadgeCondition, attendedEvents]);
+    }, [stats, isInitialized, isLoggedIn, earnedBadges, checkBadgeCondition, attendedEvents, isRealUser, realUserId]);
 
     const hasBadge = useCallback((badgeId: string): boolean => {
         return earnedBadges.some(b => b.badgeId === badgeId);
@@ -372,6 +467,8 @@ export function BadgeProvider({ children }: { children: ReactNode }) {
                 clearNewBadges,
                 stats,
                 getUserBadges,
+                isLoading,
+                isFromSupabase,
             }}
         >
             {children}

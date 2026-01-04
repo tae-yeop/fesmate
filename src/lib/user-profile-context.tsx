@@ -11,7 +11,8 @@ import {
 } from "react";
 import { useDevContext } from "./dev-context";
 import { useAuth } from "./auth-context";
-import { MOCK_USER_PROFILES } from "./follow-context";
+import { MOCK_USER_PROFILES, useFollow } from "./follow-context";
+import { useCrew } from "./crew-context";
 import { createSharedAdapter, DOMAINS } from "./storage";
 import {
     getUserProfile as getUserProfileFromDb,
@@ -160,6 +161,8 @@ function transformFrontendPrivacyToDb(privacy: PrivacySettings): DbPrivacySettin
 export function UserProfileProvider({ children }: { children: ReactNode }) {
     const { mockUserId, isLoggedIn: devIsLoggedIn } = useDevContext();
     const { user: authUser } = useAuth();
+    const { isMutualFollow } = useFollow();
+    const { sharesCrew } = useCrew();
 
     // 실제 인증 사용자가 있으면 Supabase 사용, 없으면 Dev 모드 또는 비로그인
     const realUserId = authUser?.id;
@@ -397,7 +400,6 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     }, [updatePrivacy]);
 
     // 특정 사용자가 특정 정보를 볼 수 있는지 확인
-    // TODO: 실제로는 친구/크루 관계를 확인해야 함
     const canViewContent = useCallback((viewerId: string, contentType: keyof PrivacySettings): boolean => {
         if (!myProfile) return false;
         if (viewerId === currentUserId) return true; // 본인은 항상 볼 수 있음
@@ -408,17 +410,17 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
             case "public":
                 return true;
             case "friends":
-                // TODO: 실제 친구 관계 확인 (FollowContext에서 맞팔 확인)
-                return false;
+                // 맞팔(친구) 관계 확인 - FollowContext의 isMutualFollow 사용
+                return isMutualFollow(viewerId);
             case "crew":
-                // TODO: 실제 크루 관계 확인 (CrewContext에서 같은 크루인지)
-                return false;
+                // 같은 크루에 속해 있는지 확인 - CrewContext의 sharesCrew 사용
+                return sharesCrew(viewerId);
             case "private":
                 return false;
             default:
                 return false;
         }
-    }, [myProfile, currentUserId]);
+    }, [myProfile, currentUserId, isMutualFollow, sharesCrew]);
 
     return (
         <UserProfileContext.Provider

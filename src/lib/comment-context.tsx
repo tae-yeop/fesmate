@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useCallback, useEffect, ReactNode 
 import { Comment as CommentType, CreateCommentInput } from "@/types/comment";
 import { createSharedAdapter, DOMAINS } from "./storage";
 import { useAuth } from "./auth-context";
+import { useBlock } from "./block-context";
 import { isValidUUID } from "./utils";
 import {
     getCommentsByPostId as getCommentsFromDB,
@@ -118,6 +119,8 @@ function transformDbComment(dbComment: DbComment): CommentType {
 interface CommentContextType {
     // 특정 포스트의 댓글 가져오기
     getCommentsByPostId: (postId: string) => CommentType[];
+    // 특정 사용자의 댓글 가져오기
+    getCommentsByUserId: (userId: string) => CommentType[];
     // 댓글 개수 가져오기
     getCommentCount: (postId: string) => number;
     // 댓글 추가
@@ -136,6 +139,7 @@ const CommentContext = createContext<CommentContextType | undefined>(undefined);
 
 export function CommentProvider({ children }: { children: ReactNode }) {
     const { user } = useAuth();
+    const { isBlocked } = useBlock();
     const [comments, setComments] = useState<CommentType[]>([]);
     const [isInitialized, setIsInitialized] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -183,11 +187,18 @@ export function CommentProvider({ children }: { children: ReactNode }) {
         }
     }, [user, loadedPostIds]);
 
-    // 특정 포스트의 댓글 가져오기
+    // 특정 포스트의 댓글 가져오기 (차단된 사용자 필터링)
     const getCommentsByPostId = useCallback((postId: string) => {
         return comments
-            .filter(c => c.postId === postId && !c.isDeleted)
+            .filter(c => c.postId === postId && !c.isDeleted && !isBlocked(c.userId))
             .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    }, [comments, isBlocked]);
+
+    // 특정 사용자의 댓글 가져오기 (프로필 페이지용이므로 차단 필터링 없음)
+    const getCommentsByUserId = useCallback((userId: string) => {
+        return comments
+            .filter(c => c.userId === userId && !c.isDeleted)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }, [comments]);
 
     // 댓글 개수 가져오기
@@ -287,6 +298,7 @@ export function CommentProvider({ children }: { children: ReactNode }) {
         <CommentContext.Provider
             value={{
                 getCommentsByPostId,
+                getCommentsByUserId,
                 getCommentCount,
                 addComment,
                 deleteComment,

@@ -16,7 +16,22 @@ import {
 } from "@/types/my-timetable";
 import { Slot } from "@/types/event";
 import { useDevContext } from "./dev-context";
+import { useAuth } from "./auth-context";
 import { createUserAdapter, DOMAINS } from "./storage";
+import { isValidUUID } from "./utils";
+import {
+    getUserSlotMarks as getSlotMarksFromDB,
+    getAllUserSlotMarks,
+    setSlotMark as setSlotMarkInDB,
+    deleteSlotMark as deleteSlotMarkFromDB,
+    getCustomEvents as getCustomEventsFromDB,
+    getAllCustomEvents,
+    createCustomEvent as createCustomEventInDB,
+    updateCustomEvent as updateCustomEventInDB,
+    deleteCustomEvent as deleteCustomEventFromDB,
+    SlotMark as DbSlotMark,
+    CustomEvent as DbCustomEvent,
+} from "./supabase/queries";
 
 // Storage adapter factories (userId 기반)
 // Note: MyTimetable과 SharedTimetable은 Date 필드가 중첩 객체에 있어서
@@ -35,43 +50,131 @@ const createOverlayAdapter = createUserAdapter<Record<string, { userId: string; 
 
 // Mock: 친구들의 타임테이블 (실제로는 서버에서 가져와야 함)
 // 각 사용자별, 행사별 슬롯 마킹 데이터
-// 실제 슬롯 ID 참조: pp-d{day}-s{stage}-{order}
-// Day1: NELL(pp-d1-s1-1), Jaurim(pp-d1-s1-2), Hyukoh(pp-d1-s1-3), YB(pp-d1-s1-4), Headline(pp-d1-s1-5)
-// Day2: s1: 1,2,3,4,5 / s2: 1,2,3,4,5
-// Day3: s1: 1,2,3,4,5
+// pentaport 슬롯 ID: pp-d{day}-s{stage}-{order} (3일, 3스테이지)
+// e2 (Seoul Jazz Festival) 슬롯 ID: slot1~slot14
 const MOCK_FRIEND_TIMETABLES: Record<string, Record<string, SlotMark[]>> = {
-    // user2 (록페스러버)의 타임테이블 - user1과 Hyukoh(pp-d1-s1-3) 겹침
-    user2: {
+    // user1 (페스티벌러) - crew1, crew2 멤버
+    user1: {
         pentaport: [
-            { slotId: "pp-d1-s1-1", type: "watch" },  // NELL
-            { slotId: "pp-d1-s1-3", type: "watch" },  // Hyukoh ← user1과 겹치는 슬롯
-            { slotId: "pp-d2-s1-1", type: "watch" },  // Day2 첫 공연
-            { slotId: "pp-d2-s1-4", type: "watch" },  // Day2 네번째
+            { slotId: "pp-d1-s1-1", type: "watch" },  // Day1 Main - BTS (공통!)
+            { slotId: "pp-d1-s2-1", type: "watch" },  // Day1 Second - NewJeans
+            { slotId: "pp-d2-s1-1", type: "watch" },  // Day2 Main - IVE (공통!)
         ],
         e2: [
             { slotId: "slot1", type: "watch" },
             { slotId: "slot3", type: "watch" },
         ],
     },
-    // user3 (인디키드)의 타임테이블
+    // user2 (록페스러버) - crew1 리더
+    user2: {
+        pentaport: [
+            { slotId: "pp-d1-s1-1", type: "watch" },  // Day1 Main - BTS (공통!)
+            { slotId: "pp-d1-s1-2", type: "watch" },  // Day1 Main - aespa
+            { slotId: "pp-d2-s1-1", type: "watch" },  // Day2 Main - IVE (공통!)
+            { slotId: "pp-d3-s1-1", type: "watch" },  // Day3 Main - BIGBANG
+        ],
+        e2: [
+            { slotId: "slot1", type: "watch" },
+            { slotId: "slot3", type: "watch" },
+            { slotId: "slot6", type: "watch" },
+        ],
+    },
+    // user3 (인디키드) - crew2 리더
     user3: {
         pentaport: [
-            { slotId: "pp-d1-s1-2", type: "watch" },  // Jaurim
-            { slotId: "pp-d1-s2-1", type: "watch" },  // Jazz Stage
-            { slotId: "pp-d2-s2-2", type: "watch" },
+            { slotId: "pp-d1-s2-1", type: "watch" },  // Day1 Second - NewJeans
+            { slotId: "pp-d1-s3-1", type: "watch" },  // Day1 Third
+            { slotId: "pp-d2-s2-1", type: "watch" },  // Day2 Second
         ],
         e2: [
             { slotId: "slot2", type: "watch" },
             { slotId: "slot3", type: "watch" },
+            { slotId: "slot7", type: "watch" },
         ],
     },
-    // user4 (투어러)의 타임테이블
+    // user4 (투어러) - crew3 리더
     user4: {
         pentaport: [
-            { slotId: "pp-d1-s1-1", type: "watch" },  // NELL
-            { slotId: "pp-d1-s1-3", type: "watch" },  // Hyukoh ← user1과 겹칠 수 있음
-            { slotId: "pp-d2-s1-2", type: "watch" },
-            { slotId: "pp-d3-s1-1", type: "watch" },
+            { slotId: "pp-d1-s1-1", type: "watch" },  // Day1 Main - BTS (공통!)
+            { slotId: "pp-d2-s1-1", type: "watch" },  // Day2 Main - IVE (공통!)
+            { slotId: "pp-d3-s1-1", type: "watch" },  // Day3 Main
+        ],
+        e2: [
+            { slotId: "slot1", type: "watch" },
+            { slotId: "slot3", type: "watch" },
+            { slotId: "slot8", type: "watch" },
+        ],
+    },
+    // user7 (기타치는곰) - crew1 멤버
+    user7: {
+        pentaport: [
+            { slotId: "pp-d1-s1-1", type: "watch" },  // Day1 Main - BTS (공통!)
+            { slotId: "pp-d1-s3-1", type: "watch" },  // Day1 Third
+            { slotId: "pp-d2-s1-1", type: "watch" },  // Day2 Main - IVE (공통!)
+        ],
+        e2: [
+            { slotId: "slot3", type: "watch" },
+            { slotId: "slot5", type: "watch" },
+        ],
+    },
+    // user8 (드러머킴) - crew1 멤버
+    user8: {
+        pentaport: [
+            { slotId: "pp-d1-s1-1", type: "watch" },  // Day1 Main - Daybreak (공통!)
+            { slotId: "pp-d1-s1-2", type: "watch" },  // Day1 Main - The Black Skirts
+            { slotId: "pp-d2-s1-1", type: "watch" },  // Day2 Main
+        ],
+        e2: [
+            { slotId: "slot3", type: "watch" },
+            { slotId: "slot6", type: "watch" },
+        ],
+    },
+    // user9 (베이시스트) - crew1 멤버 (대규모 크루 테스트용)
+    user9: {
+        pentaport: [
+            { slotId: "pp-d1-s1-1", type: "watch" },  // Day1 Main - Daybreak (공통!)
+            { slotId: "pp-d1-s2-1", type: "watch" },  // Day1 Second - Crying Nut (공통!)
+            { slotId: "pp-d2-s1-1", type: "watch" },  // Day2 Main
+        ],
+        e2: [
+            { slotId: "slot1", type: "watch" },
+            { slotId: "slot4", type: "watch" },
+        ],
+    },
+    // user10 (보컬리스트) - crew1 멤버
+    user10: {
+        pentaport: [
+            { slotId: "pp-d1-s1-1", type: "watch" },  // Day1 Main - Daybreak (공통!)
+            { slotId: "pp-d1-s2-1", type: "watch" },  // Day1 Second - Crying Nut (공통!)
+            { slotId: "pp-d1-s1-2", type: "watch" },  // Day1 Main - The Black Skirts
+        ],
+        e2: [
+            { slotId: "slot2", type: "watch" },
+            { slotId: "slot5", type: "watch" },
+        ],
+    },
+    // user11 (키보디스트) - crew1 멤버
+    user11: {
+        pentaport: [
+            { slotId: "pp-d1-s1-1", type: "watch" },  // Day1 Main - Daybreak (공통!)
+            { slotId: "pp-d1-s2-1", type: "watch" },  // Day1 Second - Crying Nut (공통!)
+            { slotId: "pp-d3-s1-1", type: "watch" },  // Day3 Main
+        ],
+        e2: [
+            { slotId: "slot3", type: "watch" },
+            { slotId: "slot7", type: "watch" },
+        ],
+    },
+    // user12 (퍼커셔니스트) - crew1 멤버
+    user12: {
+        pentaport: [
+            { slotId: "pp-d1-s1-1", type: "watch" },  // Day1 Main - Daybreak (공통!)
+            { slotId: "pp-d1-s2-1", type: "watch" },  // Day1 Second - Crying Nut (공통!)
+            { slotId: "pp-d2-s2-1", type: "watch" },  // Day2 Second
+        ],
+        e2: [
+            { slotId: "slot1", type: "watch" },
+            { slotId: "slot8", type: "watch" },
         ],
     },
 };
@@ -136,9 +239,47 @@ const OVERLAY_COLORS = [
     "#EC4899", // pink
 ];
 
+/**
+ * DB SlotMark를 Context SlotMark로 변환
+ */
+function transformDbSlotMark(dbMark: DbSlotMark): SlotMark {
+    return {
+        slotId: dbMark.slotId,
+        type: dbMark.markType as SlotMarkType,
+        memo: dbMark.memo,
+    };
+}
+
+/**
+ * DB CustomEvent를 Context CustomEvent로 변환
+ */
+function transformDbCustomEvent(dbEvent: DbCustomEvent): CustomEvent {
+    return {
+        id: dbEvent.id,
+        eventId: dbEvent.eventId,
+        type: dbEvent.type as CustomEvent["type"],
+        title: dbEvent.title,
+        startAt: dbEvent.startAt,
+        endAt: dbEvent.endAt,
+        memo: dbEvent.memo,
+        createdAt: dbEvent.createdAt,
+    };
+}
+
 export function MyTimetableProvider({ children }: { children: ReactNode }) {
-    const { mockUserId, isLoggedIn } = useDevContext();
-    const currentUserId = mockUserId || "guest";
+    const { user: authUser } = useAuth();
+    const { mockUserId, isLoggedIn: isDevLoggedIn } = useDevContext();
+
+    // 실제 인증 사용자가 있으면 Supabase 사용, 없으면 Dev 모드 또는 비로그인
+    const realUserId = authUser?.id;
+    const isRealUser = !!realUserId;
+
+    // Dev 모드에서 mockUserId 사용
+    const devUserId = isDevLoggedIn ? (mockUserId || "user1") : null;
+
+    // 최종 사용자 ID (실제 > Dev > guest)
+    const currentUserId = realUserId || devUserId || "guest";
+    const isLoggedIn = isRealUser || isDevLoggedIn;
 
     const [timetables, setTimetables] = useState<Record<string, MyTimetable>>({});
     const [sharedTimetables, setSharedTimetables] = useState<SharedTimetable[]>([]);
@@ -146,109 +287,179 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
     const [overlayFriends, setOverlayFriends] = useState<Record<string, { userId: string; nickname: string }[]>>({});
     const [isLoaded, setIsLoaded] = useState(false);
     const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
+    const [isFromSupabase, setIsFromSupabase] = useState(false);
 
-    // Storage adapters (userId 변경 시 재생성)
+    // Storage adapters (userId 변경 시 재생성) - Dev 모드용
     const timetablesAdapter = useMemo(
-        () => isLoggedIn ? createTimetablesAdapter(currentUserId) : null,
-        [currentUserId, isLoggedIn]
+        () => (isLoggedIn && !isRealUser) ? createTimetablesAdapter(currentUserId) : null,
+        [currentUserId, isLoggedIn, isRealUser]
     );
     const sharedAdapter = useMemo(
-        () => isLoggedIn ? createSharedAdapter(currentUserId) : null,
-        [currentUserId, isLoggedIn]
+        () => (isLoggedIn && !isRealUser) ? createSharedAdapter(currentUserId) : null,
+        [currentUserId, isLoggedIn, isRealUser]
     );
     const overlayAdapter = useMemo(
-        () => isLoggedIn ? createOverlayAdapter(currentUserId) : null,
-        [currentUserId, isLoggedIn]
+        () => (isLoggedIn && !isRealUser) ? createOverlayAdapter(currentUserId) : null,
+        [currentUserId, isLoggedIn, isRealUser]
     );
 
-    // 사용자 변경 또는 초기 로드 시 storage에서 로드
+    // 사용자 변경 또는 초기 로드 시 데이터 로드
     useEffect(() => {
-        // 로그아웃 상태면 빈 데이터 사용
-        if (!isLoggedIn || !timetablesAdapter || !sharedAdapter || !overlayAdapter) {
-            setTimetables({});
-            setSharedTimetables([]);
-            setOverlayFriends({});
+        // 사용자가 변경되었거나 처음 로드하는 경우
+        if (loadedUserId !== currentUserId) {
+            // 비로그인 상태면 빈 데이터 사용
+            if (!isLoggedIn) {
+                setTimetables({});
+                setSharedTimetables([]);
+                setOverlayFriends({});
+                setIsLoaded(true);
+                setLoadedUserId(currentUserId);
+                setIsFromSupabase(false);
+                return;
+            }
+
+            // 실제 사용자: Supabase에서 로드
+            if (isRealUser && realUserId) {
+                Promise.all([
+                    getAllUserSlotMarks(realUserId),
+                    getAllCustomEvents(realUserId),
+                ])
+                    .then(([slotMarks, customEvents]) => {
+                        // SlotMarks를 eventId별로 그룹화
+                        const groupedTimetables: Record<string, MyTimetable> = {};
+
+                        // CustomEvents를 eventId별로 그룹화
+                        customEvents.forEach((dbEvent) => {
+                            const eventId = dbEvent.eventId;
+                            if (!groupedTimetables[eventId]) {
+                                groupedTimetables[eventId] = {
+                                    eventId,
+                                    slotMarks: [],
+                                    customEvents: [],
+                                    updatedAt: new Date(),
+                                };
+                            }
+                            groupedTimetables[eventId].customEvents.push(transformDbCustomEvent(dbEvent));
+                        });
+
+                        // SlotMarks 추가 (슬롯의 eventId는 DB에서 join으로 가져와야 하지만,
+                        // 현재 구조에서는 slotId만 있으므로 별도 처리 필요)
+                        // 현재는 모든 슬롯 마크를 일괄 저장하고, 필요 시 개별 조회
+                        slotMarks.forEach((dbMark) => {
+                            // slotId에서 eventId를 추출할 수 없으므로
+                            // 별도의 "all" 키에 저장하고 런타임에 매칭
+                        });
+
+                        // Note: SlotMarks는 slotId 기반이라 eventId가 없음
+                        // 실제 사용 시 getMarkedSlots에서 슬롯 목록과 매칭 필요
+                        // 일단 모든 슬롯 마크를 별도 상태로 저장
+                        const allSlotMarks = slotMarks.map(transformDbSlotMark);
+
+                        // 특별한 키로 모든 슬롯 마크 저장
+                        if (allSlotMarks.length > 0 && !groupedTimetables["__all__"]) {
+                            groupedTimetables["__all__"] = {
+                                eventId: "__all__",
+                                slotMarks: allSlotMarks,
+                                customEvents: [],
+                                updatedAt: new Date(),
+                            };
+                        } else if (allSlotMarks.length > 0) {
+                            groupedTimetables["__all__"].slotMarks = allSlotMarks;
+                        }
+
+                        setTimetables(groupedTimetables);
+                        setIsFromSupabase(true);
+                    })
+                    .catch((error) => {
+                        console.error("[MyTimetableContext] Supabase load failed:", error);
+                        setTimetables({});
+                        setIsFromSupabase(false);
+                    })
+                    .finally(() => {
+                        setIsLoaded(true);
+                        setLoadedUserId(currentUserId);
+                    });
+                return;
+            }
+
+            // Dev 모드: localStorage에서 로드
+            if (timetablesAdapter && sharedAdapter && overlayAdapter) {
+                // timetables 로드 (수동 Date 변환)
+                const storedTimetables = timetablesAdapter.get();
+                if (storedTimetables) {
+                    Object.keys(storedTimetables).forEach(eventId => {
+                        const timetable = storedTimetables[eventId];
+                        if (timetable.customEvents) {
+                            timetable.customEvents = timetable.customEvents.map((e: CustomEvent) => ({
+                                ...e,
+                                startAt: new Date(e.startAt),
+                                endAt: new Date(e.endAt),
+                                createdAt: new Date(e.createdAt),
+                            }));
+                        }
+                        timetable.updatedAt = new Date(timetable.updatedAt);
+                        // 이전 버전 마이그레이션: checkedSlotIds -> slotMarks
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const anyTimetable = timetable as any;
+                        if (anyTimetable.checkedSlotIds && !timetable.slotMarks) {
+                            timetable.slotMarks = anyTimetable.checkedSlotIds.map((id: string) => ({
+                                slotId: id,
+                                type: "watch" as SlotMarkType,
+                            }));
+                            delete anyTimetable.checkedSlotIds;
+                        }
+                    });
+                    setTimetables(storedTimetables);
+                } else {
+                    setTimetables({});
+                }
+
+                // sharedTimetables 로드 (수동 Date 변환)
+                const storedShared = sharedAdapter.get();
+                if (storedShared) {
+                    setSharedTimetables(storedShared.map((s: SharedTimetable) => ({
+                        ...s,
+                        sharedAt: new Date(s.sharedAt),
+                        customEvents: (s.customEvents || []).map(e => ({
+                            ...e,
+                            startAt: new Date(e.startAt),
+                            endAt: new Date(e.endAt),
+                            createdAt: new Date(e.createdAt),
+                        })),
+                    })));
+                } else {
+                    setSharedTimetables([]);
+                }
+
+                // overlayFriends 로드 (Date 없음)
+                const storedOverlay = overlayAdapter.get();
+                setOverlayFriends(storedOverlay || {});
+            }
+
+            setLoadedUserId(currentUserId);
             setIsLoaded(true);
-            setLoadedUserId(null);
-            return;
+            setIsFromSupabase(false);
         }
+    }, [currentUserId, isLoggedIn, isRealUser, realUserId, loadedUserId, timetablesAdapter, sharedAdapter, overlayAdapter]);
 
-        // 같은 사용자면 다시 로드하지 않음
-        if (loadedUserId === currentUserId) return;
-
-        // timetables 로드 (수동 Date 변환)
-        const storedTimetables = timetablesAdapter.get();
-        if (storedTimetables) {
-            Object.keys(storedTimetables).forEach(eventId => {
-                const timetable = storedTimetables[eventId];
-                if (timetable.customEvents) {
-                    timetable.customEvents = timetable.customEvents.map((e: CustomEvent) => ({
-                        ...e,
-                        startAt: new Date(e.startAt),
-                        endAt: new Date(e.endAt),
-                        createdAt: new Date(e.createdAt),
-                    }));
-                }
-                timetable.updatedAt = new Date(timetable.updatedAt);
-                // 이전 버전 마이그레이션: checkedSlotIds -> slotMarks
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const anyTimetable = timetable as any;
-                if (anyTimetable.checkedSlotIds && !timetable.slotMarks) {
-                    timetable.slotMarks = anyTimetable.checkedSlotIds.map((id: string) => ({
-                        slotId: id,
-                        type: "watch" as SlotMarkType,
-                    }));
-                    delete anyTimetable.checkedSlotIds;
-                }
-            });
-            setTimetables(storedTimetables);
-        } else {
-            setTimetables({});
-        }
-
-        // sharedTimetables 로드 (수동 Date 변환)
-        const storedShared = sharedAdapter.get();
-        if (storedShared) {
-            setSharedTimetables(storedShared.map((s: SharedTimetable) => ({
-                ...s,
-                sharedAt: new Date(s.sharedAt),
-                customEvents: (s.customEvents || []).map(e => ({
-                    ...e,
-                    startAt: new Date(e.startAt),
-                    endAt: new Date(e.endAt),
-                    createdAt: new Date(e.createdAt),
-                })),
-            })));
-        } else {
-            setSharedTimetables([]);
-        }
-
-        // overlayFriends 로드 (Date 없음)
-        const storedOverlay = overlayAdapter.get();
-        setOverlayFriends(storedOverlay || {});
-
-        setLoadedUserId(currentUserId);
-        setIsLoaded(true);
-    }, [currentUserId, isLoggedIn, loadedUserId, timetablesAdapter, sharedAdapter, overlayAdapter]);
-
-    // Storage에 저장 (로그인 상태에서만)
+    // Storage에 저장 (Dev 모드일 때만 localStorage에 저장 - 실제 사용자는 Supabase에 직접 저장)
     useEffect(() => {
-        if (isLoaded && isLoggedIn && loadedUserId === currentUserId && timetablesAdapter) {
+        if (isLoaded && !isRealUser && loadedUserId === currentUserId && timetablesAdapter) {
             timetablesAdapter.set(timetables);
         }
-    }, [timetables, isLoaded, isLoggedIn, currentUserId, loadedUserId, timetablesAdapter]);
+    }, [timetables, isLoaded, isRealUser, currentUserId, loadedUserId, timetablesAdapter]);
 
     useEffect(() => {
-        if (isLoaded && isLoggedIn && loadedUserId === currentUserId && sharedAdapter) {
+        if (isLoaded && !isRealUser && loadedUserId === currentUserId && sharedAdapter) {
             sharedAdapter.set(sharedTimetables);
         }
-    }, [sharedTimetables, isLoaded, isLoggedIn, currentUserId, loadedUserId, sharedAdapter]);
+    }, [sharedTimetables, isLoaded, isRealUser, currentUserId, loadedUserId, sharedAdapter]);
 
     useEffect(() => {
-        if (isLoaded && isLoggedIn && loadedUserId === currentUserId && overlayAdapter) {
+        if (isLoaded && !isRealUser && loadedUserId === currentUserId && overlayAdapter) {
             overlayAdapter.set(overlayFriends);
         }
-    }, [overlayFriends, isLoaded, isLoggedIn, currentUserId, loadedUserId, overlayAdapter]);
+    }, [overlayFriends, isLoaded, isRealUser, currentUserId, loadedUserId, overlayAdapter]);
 
     // 타임테이블 가져오기 (없으면 생성)
     const getOrCreateTimetable = useCallback((eventId: string): MyTimetable => {
@@ -265,11 +476,21 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
 
     // 슬롯 마킹 가져오기
     const getSlotMark = useCallback((eventId: string, slotId: string): SlotMark | undefined => {
-        return timetables[eventId]?.slotMarks.find(m => m.slotId === slotId);
-    }, [timetables]);
+        // 먼저 해당 eventId에서 찾기
+        const eventMark = timetables[eventId]?.slotMarks.find(m => m.slotId === slotId);
+        if (eventMark) return eventMark;
+
+        // Supabase에서 로드한 경우 __all__ 키에서 찾기
+        if (isFromSupabase) {
+            return timetables["__all__"]?.slotMarks.find(m => m.slotId === slotId);
+        }
+
+        return undefined;
+    }, [timetables, isFromSupabase]);
 
     // 슬롯 마킹 설정
-    const setSlotMark = useCallback((eventId: string, slotId: string, markType: SlotMarkType, memo?: string) => {
+    const setSlotMarkFn = useCallback((eventId: string, slotId: string, markType: SlotMarkType, memo?: string) => {
+        // Optimistic update
         setTimetables(prev => {
             const current = prev[eventId] || {
                 eventId,
@@ -282,6 +503,11 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
             const newMarks = current.slotMarks.filter(m => m.slotId !== slotId);
             newMarks.push({ slotId, type: markType, memo });
 
+            // __all__ 키에서도 제거하고 추가 (Supabase 모드)
+            const allMarks = prev["__all__"]?.slotMarks || [];
+            const newAllMarks = allMarks.filter(m => m.slotId !== slotId);
+            newAllMarks.push({ slotId, type: markType, memo });
+
             return {
                 ...prev,
                 [eventId]: {
@@ -289,31 +515,72 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
                     slotMarks: newMarks,
                     updatedAt: new Date(),
                 },
-            };
-        });
-    }, []);
-
-    // 슬롯 마킹 제거
-    const clearSlotMark = useCallback((eventId: string, slotId: string) => {
-        setTimetables(prev => {
-            const current = prev[eventId];
-            if (!current) return prev;
-
-            return {
-                ...prev,
-                [eventId]: {
-                    ...current,
-                    slotMarks: current.slotMarks.filter(m => m.slotId !== slotId),
+                "__all__": {
+                    eventId: "__all__",
+                    slotMarks: newAllMarks,
+                    customEvents: prev["__all__"]?.customEvents || [],
                     updatedAt: new Date(),
                 },
             };
         });
-    }, []);
+
+        // 로그인 + 유효한 UUID인 경우에만 Supabase에 저장
+        if (isRealUser && realUserId && isValidUUID(slotId)) {
+            setSlotMarkInDB(realUserId, slotId, markType, memo).catch((error) => {
+                console.error("[MyTimetableContext] setSlotMark failed:", error);
+                // 롤백은 복잡하므로 에러 로깅만
+            });
+        }
+    }, [isRealUser, realUserId]);
+
+    // 슬롯 마킹 제거
+    const clearSlotMark = useCallback((eventId: string, slotId: string) => {
+        // Optimistic update
+        setTimetables(prev => {
+            const current = prev[eventId];
+            const result = { ...prev };
+
+            if (current) {
+                result[eventId] = {
+                    ...current,
+                    slotMarks: current.slotMarks.filter(m => m.slotId !== slotId),
+                    updatedAt: new Date(),
+                };
+            }
+
+            // __all__ 키에서도 제거 (Supabase 모드)
+            if (prev["__all__"]) {
+                result["__all__"] = {
+                    ...prev["__all__"],
+                    slotMarks: prev["__all__"].slotMarks.filter(m => m.slotId !== slotId),
+                    updatedAt: new Date(),
+                };
+            }
+
+            return result;
+        });
+
+        // 로그인 + 유효한 UUID인 경우에만 Supabase에서 삭제
+        if (isRealUser && realUserId && isValidUUID(slotId)) {
+            deleteSlotMarkFromDB(realUserId, slotId).catch((error) => {
+                console.error("[MyTimetableContext] clearSlotMark failed:", error);
+            });
+        }
+    }, [isRealUser, realUserId]);
 
     // 마킹된 슬롯 목록
     const getMarkedSlots = useCallback((eventId: string): SlotMark[] => {
-        return timetables[eventId]?.slotMarks ?? [];
-    }, [timetables]);
+        // 해당 eventId의 마크 반환
+        const eventMarks = timetables[eventId]?.slotMarks ?? [];
+        if (eventMarks.length > 0) return eventMarks;
+
+        // Supabase 모드에서는 __all__에서도 확인 (slotId 기반 필터링은 호출자가 처리)
+        if (isFromSupabase) {
+            return timetables["__all__"]?.slotMarks ?? [];
+        }
+
+        return [];
+    }, [timetables, isFromSupabase]);
 
     // 하위 호환: 슬롯 체크 여부 (watch 마킹으로 처리)
     const isSlotChecked = useCallback((eventId: string, slotId: string): boolean => {
@@ -327,9 +594,9 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
         if (currentMark?.type === "watch") {
             clearSlotMark(eventId, slotId);
         } else {
-            setSlotMark(eventId, slotId, "watch");
+            setSlotMarkFn(eventId, slotId, "watch");
         }
-    }, [getSlotMark, clearSlotMark, setSlotMark]);
+    }, [getSlotMark, clearSlotMark, setSlotMarkFn]);
 
     // 하위 호환: 체크된 슬롯 ID 목록
     const getCheckedSlotIds = useCallback((eventId: string): string[] => {
@@ -338,18 +605,21 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
     }, [timetables]);
 
     // 커스텀 이벤트 추가
-    const addCustomEvent = useCallback((
+    const addCustomEventFn = useCallback((
         eventId: string,
         event: Omit<CustomEvent, "id" | "eventId" | "createdAt">
     ) => {
+        const tempId = `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const newEvent: CustomEvent = {
+            ...event,
+            id: tempId,
+            eventId,
+            createdAt: new Date(),
+        };
+
+        // Optimistic update
         setTimetables(prev => {
             const current = getOrCreateTimetable(eventId);
-            const newEvent: CustomEvent = {
-                ...event,
-                id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                eventId,
-                createdAt: new Date(),
-            };
 
             return {
                 ...prev,
@@ -360,14 +630,63 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
                 },
             };
         });
-    }, [getOrCreateTimetable]);
+
+        // 로그인 + 유효한 UUID인 경우에만 Supabase에 저장
+        if (isRealUser && realUserId && isValidUUID(eventId)) {
+            createCustomEventInDB({
+                userId: realUserId,
+                eventId,
+                type: event.type,
+                title: event.title,
+                startAt: event.startAt,
+                endAt: event.endAt,
+                memo: event.memo,
+            })
+                .then((dbEvent) => {
+                    // DB에서 반환된 실제 ID로 교체
+                    setTimetables(prev => {
+                        const current = prev[eventId];
+                        if (!current) return prev;
+
+                        return {
+                            ...prev,
+                            [eventId]: {
+                                ...current,
+                                customEvents: current.customEvents.map(e =>
+                                    e.id === tempId ? { ...e, id: dbEvent.id } : e
+                                ),
+                            },
+                        };
+                    });
+                })
+                .catch((error) => {
+                    console.error("[MyTimetableContext] addCustomEvent failed:", error);
+                    // 롤백
+                    setTimetables(prev => {
+                        const current = prev[eventId];
+                        if (!current) return prev;
+
+                        return {
+                            ...prev,
+                            [eventId]: {
+                                ...current,
+                                customEvents: current.customEvents.filter(e => e.id !== tempId),
+                            },
+                        };
+                    });
+                });
+        }
+    }, [getOrCreateTimetable, isRealUser, realUserId]);
 
     // 커스텀 이벤트 수정
-    const updateCustomEvent = useCallback((
+    const updateCustomEventFn = useCallback((
         eventId: string,
         eventItemId: string,
         updates: Partial<CustomEvent>
     ) => {
+        const originalEvent = timetables[eventId]?.customEvents?.find(e => e.id === eventItemId);
+
+        // Optimistic update
         setTimetables(prev => {
             const current = prev[eventId];
             if (!current) return prev;
@@ -383,10 +702,43 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
                 },
             };
         });
-    }, []);
+
+        // 로그인 + 유효한 UUID인 경우에만 Supabase에 저장
+        if (isRealUser && realUserId && isValidUUID(eventItemId)) {
+            updateCustomEventInDB(eventItemId, {
+                type: updates.type,
+                title: updates.title,
+                startAt: updates.startAt,
+                endAt: updates.endAt,
+                memo: updates.memo !== undefined ? (updates.memo ?? null) : undefined,
+            }).catch((error) => {
+                console.error("[MyTimetableContext] updateCustomEvent failed:", error);
+                // 롤백
+                if (originalEvent) {
+                    setTimetables(prev => {
+                        const current = prev[eventId];
+                        if (!current) return prev;
+
+                        return {
+                            ...prev,
+                            [eventId]: {
+                                ...current,
+                                customEvents: current.customEvents.map(e =>
+                                    e.id === eventItemId ? originalEvent : e
+                                ),
+                            },
+                        };
+                    });
+                }
+            });
+        }
+    }, [timetables, isRealUser, realUserId]);
 
     // 커스텀 이벤트 삭제
-    const deleteCustomEvent = useCallback((eventId: string, eventItemId: string) => {
+    const deleteCustomEventFn = useCallback((eventId: string, eventItemId: string) => {
+        const originalEvent = timetables[eventId]?.customEvents?.find(e => e.id === eventItemId);
+
+        // Optimistic update
         setTimetables(prev => {
             const current = prev[eventId];
             if (!current) return prev;
@@ -400,10 +752,32 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
                 },
             };
         });
-    }, []);
+
+        // 로그인 + 유효한 UUID인 경우에만 Supabase에서 삭제
+        if (isRealUser && realUserId && isValidUUID(eventItemId)) {
+            deleteCustomEventFromDB(eventItemId).catch((error) => {
+                console.error("[MyTimetableContext] deleteCustomEvent failed:", error);
+                // 롤백
+                if (originalEvent) {
+                    setTimetables(prev => {
+                        const current = prev[eventId];
+                        if (!current) return prev;
+
+                        return {
+                            ...prev,
+                            [eventId]: {
+                                ...current,
+                                customEvents: [...current.customEvents, originalEvent],
+                            },
+                        };
+                    });
+                }
+            });
+        }
+    }, [timetables, isRealUser, realUserId]);
 
     // 커스텀 이벤트 목록
-    const getCustomEvents = useCallback((eventId: string): CustomEvent[] => {
+    const getCustomEventsFn = useCallback((eventId: string): CustomEvent[] => {
         return timetables[eventId]?.customEvents ?? [];
     }, [timetables]);
 
@@ -675,16 +1049,16 @@ export function MyTimetableProvider({ children }: { children: ReactNode }) {
         <MyTimetableContext.Provider
             value={{
                 getSlotMark,
-                setSlotMark,
+                setSlotMark: setSlotMarkFn,
                 clearSlotMark,
                 getMarkedSlots,
                 isSlotChecked,
                 toggleSlotCheck,
                 getCheckedSlotIds,
-                addCustomEvent,
-                updateCustomEvent,
-                deleteCustomEvent,
-                getCustomEvents,
+                addCustomEvent: addCustomEventFn,
+                updateCustomEvent: updateCustomEventFn,
+                deleteCustomEvent: deleteCustomEventFn,
+                getCustomEvents: getCustomEventsFn,
                 getMyTimetable,
                 clearMyTimetable,
                 getTimetableItems,

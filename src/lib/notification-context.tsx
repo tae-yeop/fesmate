@@ -9,7 +9,7 @@ import {
     useRef,
     ReactNode,
 } from "react";
-import { Notification, NotificationType } from "@/types/notification";
+import { Notification, NotificationType, isQuietHours, URGENT_NOTIFICATION_TYPES } from "@/types/notification";
 import { MOCK_NOTIFICATIONS } from "@/lib/mock-data";
 import { useDevContext } from "./dev-context";
 import { useAuth } from "./auth-context";
@@ -24,6 +24,7 @@ import {
     getUnreadNotificationCount,
     Notification as DbNotification,
 } from "./supabase/queries/notifications";
+import { useNotifications as useRealtimeNotifications } from "./supabase/hooks";
 
 // ===== Context =====
 
@@ -62,6 +63,28 @@ interface NotificationContextValue {
         location?: string;
         reminderType: "1d" | "1h";
     }) => void;
+    /** 슬롯 시작 알림 생성 (10분 전) */
+    notifySlotReminder: (params: {
+        userId: string;
+        eventId: string;
+        slotId: string;
+        slotTitle: string;
+        artistName?: string;
+        stageName?: string;
+        startAt: Date;
+    }) => void;
+    /** 슬롯 리마인더 스케줄링 */
+    scheduleSlotReminder: (params: {
+        userId: string;
+        eventId: string;
+        slotId: string;
+        slotTitle: string;
+        artistName?: string;
+        stageName?: string;
+        startAt: Date;
+    }) => () => void; // cleanup function 반환
+    /** 스케줄된 슬롯 알림 취소 */
+    cancelSlotReminder: (slotId: string) => void;
     /** 로딩 상태 */
     loading: boolean;
 }
@@ -176,6 +199,57 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         }
     }, [notifications, isInitialized]);
 
+    // 실시간 알림 구독 (로그인 사용자만)
+    // Realtime은 Database 테이블 Row 타입을 반환하므로 DbNotification으로 변환 후 사용
+    const handleNewNotification = useCallback((dbRow: {
+        id: string;
+        user_id: string;
+        type: string;
+        event_id?: string | null;
+        post_id?: string | null;
+        slot_id?: string | null;
+        title: string;
+        body: string;
+        image_url?: string | null;
+        deep_link?: string | null;
+        is_read: boolean;
+        dedupe_key?: string | null;
+        priority?: string | null;
+        created_at: string;
+    }) => {
+        console.log("[NotificationContext] Realtime: New notification received:", dbRow.id);
+        // DB Row를 DbNotification 형태로 변환
+        const dbNotification: DbNotification = {
+            id: dbRow.id,
+            userId: dbRow.user_id,
+            type: dbRow.type as DbNotification["type"],
+            eventId: dbRow.event_id ?? undefined,
+            postId: dbRow.post_id ?? undefined,
+            slotId: dbRow.slot_id ?? undefined,
+            title: dbRow.title,
+            body: dbRow.body,
+            imageUrl: dbRow.image_url ?? undefined,
+            deepLink: dbRow.deep_link ?? undefined,
+            isRead: dbRow.is_read,
+            priority: (dbRow.priority as "normal" | "high") ?? "normal",
+            createdAt: new Date(dbRow.created_at),
+        };
+        const transformed = transformDbNotification(dbNotification);
+        // 중복 체크 후 추가
+        setNotifications(prev => {
+            if (prev.some(n => n.id === transformed.id)) {
+                return prev;
+            }
+            return [transformed, ...prev];
+        });
+    }, []);
+
+    useRealtimeNotifications({
+        userId: user?.id || "",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onNewNotification: user ? handleNewNotification as any : undefined,
+    });
+
     // 현재 사용자의 알림만 필터링
     // 로그아웃 상태 (user도 없고 mockUserId도 없으면)에서는 빈 배열 반환
     const isLoggedOut = !user && !mockUserId;
@@ -252,13 +326,92 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         }
     }, [notifications, user]);
 
+    // 보류된 알림 저장 (Quiet Hours 중)
+    const deferredNotificationsRef = useRef<Notification[]>([]);
+
+    // Quiet Hours 종료 시 보류 알림 발송
+    useEffect(() => {
+        const checkAndReleaseDeferred = () => {
+            if (!isQuietHours() && deferredNotificationsRef.current.length > 0) {
+                console.log(`[NotificationContext] Releasing ${deferredNotificationsRef.current.length} deferred notifications`);
+                const toRelease = [...deferredNotificationsRef.current];
+                deferredNotificationsRef.current = [];
+                setNotifications(prev => [...toRelease, ...prev]);
+            }
+        };
+
+        // 매 분마다 확인
+        const interval = setInterval(checkAndReleaseDeferred, 60000);
+        // 초기 확인
+        checkAndReleaseDeferred();
+
+        return () => clearInterval(interval);
+    }, []);
+
     // 알림 추가 (로컬에서만 - Supabase는 서버 트리거로 생성)
+    // Quiet Hours 및 dedupe_key 처리 포함
     const addNotification = useCallback(
         (notification: Omit<Notification, "id" | "createdAt" | "isRead">) => {
+            const now = new Date();
+            const isUrgent = URGENT_NOTIFICATION_TYPES.includes(notification.type);
+
+            // Quiet Hours 체크 (긴급 알림 제외)
+            if (isQuietHours(now) && !isUrgent) {
+                console.log(`[NotificationContext] Quiet Hours - deferring notification: ${notification.type}`);
+                const deferredNotification: Notification = {
+                    ...notification,
+                    id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    createdAt: now,
+                    isRead: false,
+                    deferredFromQuietHours: true,
+                };
+                deferredNotificationsRef.current.push(deferredNotification);
+                return;
+            }
+
+            // dedupe_key 체크 - 같은 키가 있으면 기존 알림 업데이트
+            if (notification.dedupeKey) {
+                setNotifications(prev => {
+                    const existingIndex = prev.findIndex(
+                        n => n.dedupeKey === notification.dedupeKey && n.userId === notification.userId
+                    );
+
+                    if (existingIndex !== -1) {
+                        // 기존 알림 업데이트 (groupCount 증가)
+                        const existing = prev[existingIndex];
+                        const updatedNotification: Notification = {
+                            ...existing,
+                            groupCount: (existing.groupCount || 1) + 1,
+                            body: notification.body, // 최신 body로 업데이트
+                            createdAt: now, // 시간 갱신
+                            isRead: false, // 다시 읽지 않음으로
+                        };
+                        console.log(`[NotificationContext] Dedupe - updating existing notification, count: ${updatedNotification.groupCount}`);
+
+                        // 기존 위치에서 제거하고 맨 앞에 추가
+                        const newList = [...prev];
+                        newList.splice(existingIndex, 1);
+                        return [updatedNotification, ...newList];
+                    }
+
+                    // 새 알림 추가
+                    const newNotification: Notification = {
+                        ...notification,
+                        id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                        createdAt: now,
+                        isRead: false,
+                        groupCount: 1,
+                    };
+                    return [newNotification, ...prev];
+                });
+                return;
+            }
+
+            // 일반 알림 추가
             const newNotification: Notification = {
                 ...notification,
                 id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                createdAt: new Date(),
+                createdAt: now,
                 isRead: false,
             };
             setNotifications(prev => [newNotification, ...prev]);
@@ -348,6 +501,107 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         [addNotification]
     );
 
+    // 슬롯 시작 알림 생성 (10분 전)
+    const notifySlotReminder = useCallback(
+        (params: {
+            userId: string;
+            eventId: string;
+            slotId: string;
+            slotTitle: string;
+            artistName?: string;
+            stageName?: string;
+            startAt: Date;
+        }) => {
+            const timeStr = new Intl.DateTimeFormat("ko-KR", {
+                hour: "2-digit",
+                minute: "2-digit",
+            }).format(new Date(params.startAt));
+
+            const displayTitle = params.artistName || params.slotTitle;
+            const stageInfo = params.stageName ? ` @ ${params.stageName}` : "";
+
+            addNotification({
+                userId: params.userId,
+                type: "slot_start_reminder",
+                eventId: params.eventId,
+                slotId: params.slotId,
+                title: `🎵 10분 후 공연!`,
+                body: `${displayTitle}${stageInfo} - ${timeStr} 시작`,
+                deepLink: `/event/${params.eventId}?tab=timetable&slot=${params.slotId}`,
+            });
+        },
+        [addNotification]
+    );
+
+    // 스케줄된 슬롯 알림 타이머 관리
+    const slotReminderTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+
+    // 슬롯 리마인더 스케줄링 (10분 전 알림)
+    const scheduleSlotReminder = useCallback(
+        (params: {
+            userId: string;
+            eventId: string;
+            slotId: string;
+            slotTitle: string;
+            artistName?: string;
+            stageName?: string;
+            startAt: Date;
+        }) => {
+            const now = Date.now();
+            const startTime = new Date(params.startAt).getTime();
+            const reminderTime = startTime - 10 * 60 * 1000; // 10분 전
+            const delay = reminderTime - now;
+
+            // 이미 지났거나 1분 이내면 스케줄 안함
+            if (delay < 60 * 1000) {
+                console.log(`[NotificationContext] Slot reminder skipped (too late): ${params.slotId}`);
+                return () => {};
+            }
+
+            // 기존 타이머가 있으면 제거
+            const existingTimer = slotReminderTimersRef.current.get(params.slotId);
+            if (existingTimer) {
+                clearTimeout(existingTimer);
+            }
+
+            console.log(`[NotificationContext] Scheduling slot reminder for ${params.slotId} in ${Math.round(delay / 60000)}min`);
+
+            const timer = setTimeout(() => {
+                notifySlotReminder(params);
+                slotReminderTimersRef.current.delete(params.slotId);
+            }, delay);
+
+            slotReminderTimersRef.current.set(params.slotId, timer);
+
+            // cleanup function 반환
+            return () => {
+                clearTimeout(timer);
+                slotReminderTimersRef.current.delete(params.slotId);
+            };
+        },
+        [notifySlotReminder]
+    );
+
+    // 스케줄된 슬롯 알림 취소
+    const cancelSlotReminder = useCallback((slotId: string) => {
+        const timer = slotReminderTimersRef.current.get(slotId);
+        if (timer) {
+            clearTimeout(timer);
+            slotReminderTimersRef.current.delete(slotId);
+            console.log(`[NotificationContext] Slot reminder cancelled: ${slotId}`);
+        }
+    }, []);
+
+    // 컴포넌트 언마운트 시 모든 타이머 정리
+    useEffect(() => {
+        return () => {
+            slotReminderTimersRef.current.forEach((timer) => {
+                clearTimeout(timer);
+            });
+            slotReminderTimersRef.current.clear();
+        };
+    }, []);
+
     return (
         <NotificationContext.Provider
             value={{
@@ -360,6 +614,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                 notifyParticipationAccepted,
                 notifyParticipationDeclined,
                 notifyParticipationReminder,
+                notifySlotReminder,
+                scheduleSlotReminder,
+                cancelSlotReminder,
                 loading,
             }}
         >

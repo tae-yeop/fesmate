@@ -32,74 +32,9 @@ import {
     type UserProfile as DbUserProfile,
 } from "./supabase/queries";
 
-// ===== Mock 사용자 프로필 데이터 (Dev 모드용) =====
-
-export const MOCK_USER_PROFILES: UserProfile[] = [
-    {
-        id: "user1",
-        nickname: "페스티벌러",
-        avatar: "🎵",
-        bio: "공연 다니는 게 인생 낙! 록 페스티벌 광팬입니다.",
-        followerCount: 42,
-        followingCount: 28,
-        attendedCount: 15,
-        joinedAt: new Date("2024-01-15"),
-        featuredBadges: ["concert_fan", "festival_lover"],
-    },
-    {
-        id: "user2",
-        nickname: "록페스러버",
-        avatar: "🎸",
-        bio: "지산, 펜타포트 매년 갑니다!",
-        followerCount: 156,
-        followingCount: 89,
-        attendedCount: 48,
-        joinedAt: new Date("2023-06-20"),
-        featuredBadges: ["festival_master", "nationwide_tourer"],
-    },
-    {
-        id: "user3",
-        nickname: "인디키드",
-        avatar: "🎤",
-        bio: "홍대 인디씬 탐험 중",
-        followerCount: 73,
-        followingCount: 41,
-        attendedCount: 32,
-        joinedAt: new Date("2023-11-05"),
-        featuredBadges: ["concert_fan", "seoul_conqueror"],
-    },
-    {
-        id: "user4",
-        nickname: "투어러",
-        avatar: "🚀",
-        bio: "전국 콘서트 투어러! 어디든 갑니다",
-        followerCount: 234,
-        followingCount: 112,
-        attendedCount: 67,
-        joinedAt: new Date("2023-03-10"),
-        featuredBadges: ["nationwide_tourer", "performance_god"],
-    },
-    {
-        id: "user5",
-        nickname: "재즈매니아",
-        avatar: "🎷",
-        bio: "재즈 클럽 투어 중",
-        followerCount: 45,
-        followingCount: 33,
-        attendedCount: 28,
-        joinedAt: new Date("2024-02-01"),
-    },
-    {
-        id: "user6",
-        nickname: "DJ마스터",
-        avatar: "🔥",
-        bio: "EDM is my life",
-        followerCount: 189,
-        followingCount: 76,
-        attendedCount: 41,
-        joinedAt: new Date("2023-08-15"),
-    },
-];
+// Mock 사용자 프로필 데이터 - 순환 참조 방지를 위해 별도 파일에서 import
+import { MOCK_USER_PROFILES } from "./mock-user-profiles";
+export { MOCK_USER_PROFILES };
 
 // ===== Mock 팔로우 관계 데이터 (Dev 모드용) =====
 

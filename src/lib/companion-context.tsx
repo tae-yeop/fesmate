@@ -6,6 +6,7 @@ import {
     useState,
     useEffect,
     useCallback,
+    useMemo,
     ReactNode,
 } from "react";
 import {
@@ -14,7 +15,17 @@ import {
     CreateCompanionRequestInput,
 } from "@/types/companion";
 import { useDevContext } from "./dev-context";
+import { useAuth } from "./auth-context";
 import { createSharedAdapter, DOMAINS } from "./storage";
+import { isValidUUID } from "./utils";
+import {
+    getAllCompanionRequests,
+    sendCompanionRequest as sendCompanionRequestDb,
+    acceptCompanionRequest as acceptCompanionRequestDb,
+    declineCompanionRequest as declineCompanionRequestDb,
+    cancelCompanionRequest as cancelCompanionRequestDb,
+    DbCompanionRequest,
+} from "./supabase/queries";
 
 // ===== Mock 동행 제안 데이터 =====
 
@@ -49,6 +60,23 @@ export const MOCK_COMPANION_REQUESTS: CompanionRequest[] = [
     },
 ];
 
+/**
+ * DB 데이터를 Context 타입으로 변환
+ */
+function transformDbToCompanionRequest(db: DbCompanionRequest): CompanionRequest {
+    return {
+        id: db.id,
+        fromUserId: db.fromUserId,
+        toUserId: db.toUserId,
+        eventId: db.eventId,
+        slotIds: db.slotIds,
+        message: db.message,
+        status: db.status,
+        createdAt: db.createdAt,
+        respondedAt: db.respondedAt,
+    };
+}
+
 // ===== Context =====
 
 interface CompanionContextValue {
@@ -72,44 +100,87 @@ interface CompanionContextValue {
     getCompanionsForEvent: (eventId: string) => string[];
     /** 동행 제안 취소 (보낸 제안 중 pending 상태만) */
     cancelRequest: (requestId: string) => void;
+    /** 로딩 상태 */
+    isLoading: boolean;
+    /** Supabase 연동 여부 */
+    isFromSupabase: boolean;
 }
 
 const CompanionContext = createContext<CompanionContextValue | null>(null);
 
-// Storage adapter (전역 공유 데이터)
+// Storage adapter (전역 공유 데이터) - Dev 모드용
 const companionAdapter = createSharedAdapter<CompanionRequest[]>({
     domain: DOMAINS.COMPANION_REQUESTS,
     dateFields: ["createdAt", "respondedAt"],
 });
 
 export function CompanionProvider({ children }: { children: ReactNode }) {
-    const { mockUserId } = useDevContext();
-    const currentUserId = mockUserId || "user1";
+    const { user: authUser } = useAuth();
+    const { mockUserId, isLoggedIn: isDevLoggedIn } = useDevContext();
+
+    // 실제 인증 사용자가 있으면 Supabase 사용, 없으면 Dev 모드 또는 비로그인
+    const realUserId = authUser?.id;
+    const isRealUser = !!realUserId;
+
+    // Dev 모드에서 mockUserId 사용
+    const devUserId = isDevLoggedIn ? (mockUserId || "user1") : null;
+
+    // 최종 사용자 ID (실제 > Dev > null)
+    const currentUserId = realUserId || devUserId || "user1";
 
     const [requests, setRequests] = useState<CompanionRequest[]>(MOCK_COMPANION_REQUESTS);
-    const [isInitialized, setIsInitialized] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isFromSupabase, setIsFromSupabase] = useState(false);
+    const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
 
-    // Storage에서 불러오기
+    // 데이터 로드
     useEffect(() => {
-        const stored = companionAdapter.get();
-        if (stored) {
-            setRequests(stored);
-        }
-        setIsInitialized(true);
-    }, []);
+        if (loadedUserId !== currentUserId) {
+            // 실제 사용자: Supabase에서 로드
+            if (isRealUser && realUserId) {
+                setIsLoading(true);
+                getAllCompanionRequests(realUserId)
+                    .then((dbRequests) => {
+                        setRequests(dbRequests.map(transformDbToCompanionRequest));
+                        setIsFromSupabase(true);
+                    })
+                    .catch((error) => {
+                        console.error("[CompanionContext] Supabase load failed:", error);
+                        setRequests([]);
+                        setIsFromSupabase(false);
+                    })
+                    .finally(() => {
+                        setIsLoading(false);
+                        setLoadedUserId(currentUserId);
+                    });
+                return;
+            }
 
-    // Storage에 저장
-    useEffect(() => {
-        if (isInitialized) {
-            companionAdapter.set(requests);
+            // Dev 모드: localStorage에서 로드
+            const stored = companionAdapter.get();
+            if (stored) {
+                setRequests(stored);
+            } else {
+                setRequests(MOCK_COMPANION_REQUESTS);
+            }
+            setLoadedUserId(currentUserId);
+            setIsFromSupabase(false);
         }
-    }, [requests, isInitialized]);
+    }, [currentUserId, isRealUser, realUserId, loadedUserId]);
+
+    // Storage에 저장 (Dev 모드에서만)
+    const saveToStorage = useCallback((updatedRequests: CompanionRequest[]) => {
+        if (!isRealUser) {
+            companionAdapter.set(updatedRequests);
+        }
+    }, [isRealUser]);
 
     // 동행 제안 보내기
     const sendRequest = useCallback(
         (input: CreateCompanionRequestInput): CompanionRequest => {
+            const tempId = `cr_${Date.now()}`;
             const newRequest: CompanionRequest = {
-                id: `cr_${Date.now()}`,
+                id: tempId,
                 fromUserId: currentUserId,
                 toUserId: input.toUserId,
                 eventId: input.eventId,
@@ -118,14 +189,49 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
                 status: "pending",
                 createdAt: new Date(),
             };
+
+            // Optimistic update
             setRequests((prev) => [...prev, newRequest]);
+
+            // 로그인 + 유효한 UUID인 경우에만 Supabase에 저장
+            if (isRealUser && realUserId && isValidUUID(input.eventId) && isValidUUID(input.toUserId)) {
+                sendCompanionRequestDb(realUserId, {
+                    toUserId: input.toUserId,
+                    eventId: input.eventId,
+                    slotIds: input.slotIds,
+                    message: input.message,
+                })
+                    .then((dbRequest) => {
+                        // DB에서 반환된 실제 ID로 교체
+                        setRequests((prev) =>
+                            prev.map((r) =>
+                                r.id === tempId
+                                    ? transformDbToCompanionRequest(dbRequest)
+                                    : r
+                            )
+                        );
+                    })
+                    .catch((error) => {
+                        console.error("[CompanionContext] sendRequest failed:", error);
+                        // 롤백
+                        setRequests((prev) => prev.filter((r) => r.id !== tempId));
+                    });
+            } else {
+                // Dev 모드: localStorage에 저장
+                saveToStorage([...requests, newRequest]);
+            }
+
             return newRequest;
         },
-        [currentUserId]
+        [currentUserId, isRealUser, realUserId, requests, saveToStorage]
     );
 
     // 동행 제안 수락
     const acceptRequest = useCallback((requestId: string) => {
+        const request = requests.find((r) => r.id === requestId);
+        if (!request) return;
+
+        // Optimistic update
         setRequests((prev) =>
             prev.map((r) =>
                 r.id === requestId
@@ -133,10 +239,35 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
                     : r
             )
         );
-    }, []);
+
+        // 로그인 + 유효한 UUID인 경우에만 Supabase에 저장
+        if (isRealUser && realUserId && isValidUUID(requestId)) {
+            acceptCompanionRequestDb(requestId).catch((error) => {
+                console.error("[CompanionContext] acceptRequest failed:", error);
+                // 롤백
+                setRequests((prev) =>
+                    prev.map((r) =>
+                        r.id === requestId ? request : r
+                    )
+                );
+            });
+        } else {
+            // Dev 모드: localStorage에 저장
+            const updated = requests.map((r) =>
+                r.id === requestId
+                    ? { ...r, status: "accepted" as const, respondedAt: new Date() }
+                    : r
+            );
+            saveToStorage(updated);
+        }
+    }, [requests, isRealUser, realUserId, saveToStorage]);
 
     // 동행 제안 거절
     const declineRequest = useCallback((requestId: string) => {
+        const request = requests.find((r) => r.id === requestId);
+        if (!request) return;
+
+        // Optimistic update
         setRequests((prev) =>
             prev.map((r) =>
                 r.id === requestId
@@ -144,7 +275,28 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
                     : r
             )
         );
-    }, []);
+
+        // 로그인 + 유효한 UUID인 경우에만 Supabase에 저장
+        if (isRealUser && realUserId && isValidUUID(requestId)) {
+            declineCompanionRequestDb(requestId).catch((error) => {
+                console.error("[CompanionContext] declineRequest failed:", error);
+                // 롤백
+                setRequests((prev) =>
+                    prev.map((r) =>
+                        r.id === requestId ? request : r
+                    )
+                );
+            });
+        } else {
+            // Dev 모드: localStorage에 저장
+            const updated = requests.map((r) =>
+                r.id === requestId
+                    ? { ...r, status: "declined" as const, respondedAt: new Date() }
+                    : r
+            );
+            saveToStorage(updated);
+        }
+    }, [requests, isRealUser, realUserId, saveToStorage]);
 
     // 받은 동행 제안 목록
     const getReceivedRequests = useCallback(() => {
@@ -154,7 +306,7 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
     }, [requests, currentUserId]);
 
     // 보낸 동행 제안 목록
-    const getSentRequests = useCallback(() => {
+    const getSentRequestsFn = useCallback(() => {
         return requests
             .filter((r) => r.fromUserId === currentUserId)
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -182,7 +334,7 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
     }, [requests, currentUserId]);
 
     // 특정 행사의 동행 확정된 사용자 ID 목록
-    const getCompanionsForEvent = useCallback(
+    const getCompanionsForEventFn = useCallback(
         (eventId: string): string[] => {
             const companions: string[] = [];
             requests
@@ -201,28 +353,62 @@ export function CompanionProvider({ children }: { children: ReactNode }) {
 
     // 동행 제안 취소
     const cancelRequest = useCallback((requestId: string) => {
-        setRequests((prev) =>
-            prev.filter(
-                (r) => !(r.id === requestId && r.status === "pending")
-            )
+        const request = requests.find(
+            (r) => r.id === requestId && r.status === "pending"
         );
-    }, []);
+        if (!request) return;
+
+        // Optimistic update
+        setRequests((prev) =>
+            prev.filter((r) => !(r.id === requestId && r.status === "pending"))
+        );
+
+        // 로그인 + 유효한 UUID인 경우에만 Supabase에서 삭제
+        if (isRealUser && realUserId && isValidUUID(requestId)) {
+            cancelCompanionRequestDb(requestId).catch((error) => {
+                console.error("[CompanionContext] cancelRequest failed:", error);
+                // 롤백
+                setRequests((prev) => [...prev, request]);
+            });
+        } else {
+            // Dev 모드: localStorage에 저장
+            const updated = requests.filter(
+                (r) => !(r.id === requestId && r.status === "pending")
+            );
+            saveToStorage(updated);
+        }
+    }, [requests, isRealUser, realUserId, saveToStorage]);
+
+    const value = useMemo(() => ({
+        currentUserId,
+        sendRequest,
+        acceptRequest,
+        declineRequest,
+        getReceivedRequests,
+        getSentRequests: getSentRequestsFn,
+        getRequestStatus,
+        getPendingCount,
+        getCompanionsForEvent: getCompanionsForEventFn,
+        cancelRequest,
+        isLoading,
+        isFromSupabase,
+    }), [
+        currentUserId,
+        sendRequest,
+        acceptRequest,
+        declineRequest,
+        getReceivedRequests,
+        getSentRequestsFn,
+        getRequestStatus,
+        getPendingCount,
+        getCompanionsForEventFn,
+        cancelRequest,
+        isLoading,
+        isFromSupabase,
+    ]);
 
     return (
-        <CompanionContext.Provider
-            value={{
-                currentUserId,
-                sendRequest,
-                acceptRequest,
-                declineRequest,
-                getReceivedRequests,
-                getSentRequests,
-                getRequestStatus,
-                getPendingCount,
-                getCompanionsForEvent,
-                cancelRequest,
-            }}
-        >
+        <CompanionContext.Provider value={value}>
             {children}
         </CompanionContext.Provider>
     );

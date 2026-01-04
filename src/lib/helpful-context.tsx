@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { createSharedAdapter, DOMAINS } from "./storage";
 import { useAuth } from "./auth-context";
+import { useDevContext } from "./dev-context";
 import { isValidUUID } from "./utils";
 import {
     getUserReactions,
@@ -25,12 +26,14 @@ interface HelpfulContextType {
     helpfulPosts: Set<string>;
     // 포스트별 도움됨 카운트 증분 (로컬 변경분만)
     helpfulDelta: Map<string, number>;
-    // 도움됨 토글
-    toggleHelpful: (postId: string) => Promise<void>;
+    // 도움됨 토글 (postUserId를 전달하여 자기 글 차단)
+    toggleHelpful: (postId: string, postUserId?: string) => Promise<boolean>;
     // 도움됨 여부 확인
     isHelpful: (postId: string) => boolean;
     // 최종 도움됨 카운트 계산 (원래 카운트 + 내 증분)
     getHelpfulCount: (postId: string, originalCount: number) => number;
+    // 자기 글인지 확인 (도움됨 버튼 비활성화용)
+    isOwnPost: (postUserId: string) => boolean;
     // 로딩 상태
     loading: boolean;
 }
@@ -39,10 +42,14 @@ const HelpfulContext = createContext<HelpfulContextType | undefined>(undefined);
 
 export function HelpfulProvider({ children }: { children: React.ReactNode }) {
     const { user } = useAuth();
+    const { mockUserId } = useDevContext();
     const [helpfulPosts, setHelpfulPosts] = useState<Set<string>>(new Set());
     const [helpfulDelta, setHelpfulDelta] = useState<Map<string, number>>(new Map());
     const [isLoaded, setIsLoaded] = useState(false);
     const [loading, setLoading] = useState(true);
+
+    // 현재 사용자 ID (실제 인증 또는 Dev 모드)
+    const currentUserId = user?.id || mockUserId;
 
     // 데이터 로드 (localStorage 기본 + 로그인 시 Supabase 병합)
     useEffect(() => {
@@ -90,7 +97,19 @@ export function HelpfulProvider({ children }: { children: React.ReactNode }) {
         helpfulAdapter.set(data);
     }, [helpfulPosts, helpfulDelta, isLoaded]);
 
-    const toggleHelpful = useCallback(async (postId: string) => {
+    // 자기 글인지 확인
+    const isOwnPost = useCallback((postUserId: string): boolean => {
+        if (!currentUserId) return false;
+        return currentUserId === postUserId;
+    }, [currentUserId]);
+
+    const toggleHelpful = useCallback(async (postId: string, postUserId?: string): Promise<boolean> => {
+        // 자기 글에는 도움됨 표시 불가
+        if (postUserId && currentUserId && postUserId === currentUserId) {
+            console.warn("[HelpfulContext] Cannot mark own post as helpful");
+            return false;
+        }
+
         const wasHelpful = helpfulPosts.has(postId);
 
         // Optimistic update
@@ -125,7 +144,9 @@ export function HelpfulProvider({ children }: { children: React.ReactNode }) {
                 console.warn("[HelpfulContext] Supabase sync failed:", error);
             }
         }
-    }, [helpfulPosts, user]);
+
+        return true;
+    }, [helpfulPosts, user, currentUserId]);
 
     const isHelpful = useCallback((postId: string) => {
         return helpfulPosts.has(postId);
@@ -149,6 +170,7 @@ export function HelpfulProvider({ children }: { children: React.ReactNode }) {
                 toggleHelpful,
                 isHelpful,
                 getHelpfulCount,
+                isOwnPost,
                 loading,
             }}
         >

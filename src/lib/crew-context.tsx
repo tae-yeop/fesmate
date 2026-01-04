@@ -149,25 +149,28 @@ export const MOCK_CREWS: Crew[] = [
 ];
 
 export const MOCK_CREW_MEMBERS: CrewMember[] = [
-    // 록페스 패밀리
+    // 록페스 패밀리 (8명 - 대규모 크루 테스트용)
     { crewId: "crew1", userId: "user2", userNickname: "록페스러버", role: "leader", joinedAt: new Date("2024-03-15") },
     { crewId: "crew1", userId: "user1", userNickname: "페스티벌러", role: "member", joinedAt: new Date("2024-04-01") },
     { crewId: "crew1", userId: "user7", userNickname: "기타치는곰", role: "member", joinedAt: new Date("2024-05-10") },
     { crewId: "crew1", userId: "user8", userNickname: "드러머킴", role: "member", joinedAt: new Date("2024-06-15") },
-    // 인디씬 크루
+    { crewId: "crew1", userId: "user9", userNickname: "베이시스트", role: "member", joinedAt: new Date("2024-07-01") },
+    { crewId: "crew1", userId: "user10", userNickname: "보컬리스트", role: "member", joinedAt: new Date("2024-07-15") },
+    { crewId: "crew1", userId: "user11", userNickname: "키보디스트", role: "member", joinedAt: new Date("2024-08-01") },
+    { crewId: "crew1", userId: "user12", userNickname: "퍼커셔니스트", role: "member", joinedAt: new Date("2024-08-15") },
+    // 인디씬 크루 (3명)
     { crewId: "crew2", userId: "user3", userNickname: "인디키드", role: "leader", joinedAt: new Date("2024-06-01") },
     { crewId: "crew2", userId: "user1", userNickname: "페스티벌러", role: "member", joinedAt: new Date("2024-07-01") },
-    { crewId: "crew2", userId: "user9", userNickname: "홍대스타", role: "member", joinedAt: new Date("2024-08-01") },
-    // 콘서트 투어러스
+    { crewId: "crew2", userId: "user5", userNickname: "재즈매니아", role: "member", joinedAt: new Date("2024-08-01") },
+    // 콘서트 투어러스 (2명)
     { crewId: "crew3", userId: "user4", userNickname: "투어러", role: "leader", joinedAt: new Date("2024-01-20") },
-    { crewId: "crew3", userId: "user10", userNickname: "콘서트퀸", role: "member", joinedAt: new Date("2024-02-15") },
-    { crewId: "crew3", userId: "user11", userNickname: "팬클럽회장", role: "member", joinedAt: new Date("2024-03-01") },
-    // 재즈 나이트
+    { crewId: "crew3", userId: "user6", userNickname: "DJ마스터", role: "member", joinedAt: new Date("2024-02-15") },
+    // 재즈 나이트 (2명)
     { crewId: "crew4", userId: "user5", userNickname: "재즈매니아", role: "leader", joinedAt: new Date("2024-08-10") },
-    { crewId: "crew4", userId: "user12", userNickname: "색소폰걸", role: "member", joinedAt: new Date("2024-09-01") },
-    // EDM 파티 크루
+    { crewId: "crew4", userId: "user3", userNickname: "인디키드", role: "member", joinedAt: new Date("2024-09-01") },
+    // EDM 파티 크루 (2명)
     { crewId: "crew5", userId: "user6", userNickname: "DJ마스터", role: "leader", joinedAt: new Date("2024-04-05") },
-    { crewId: "crew5", userId: "user13", userNickname: "파티피플", role: "member", joinedAt: new Date("2024-05-01") },
+    { crewId: "crew5", userId: "user4", userNickname: "투어러", role: "member", joinedAt: new Date("2024-05-01") },
 ];
 
 export const MOCK_CREW_EVENTS: CrewEvent[] = [
@@ -316,6 +319,8 @@ interface CrewContextValue {
     isMember: (crewId: string) => boolean;
     /** 크루장 여부 확인 */
     isLeader: (crewId: string) => boolean;
+    /** 현재 사용자와 특정 사용자가 같은 크루에 속해 있는지 확인 */
+    sharesCrew: (targetUserId: string) => boolean;
     /** 현재 사용자 ID */
     currentUserId: string;
 
@@ -437,11 +442,12 @@ export function CrewProvider({ children }: { children: ReactNode }) {
     const realUserId = authUser?.id;
     const isRealUser = !!realUserId && isValidUUID(realUserId);
 
-    // Dev 모드에서 mockUserId 사용
-    const devUserId = isDevLoggedIn ? (mockUserId || "user1") : "user1";
+    // Dev 모드에서 mockUserId 사용 (Dev 모드 로그인 상태일 때만)
+    const devUserId = isDevLoggedIn ? (mockUserId || "user1") : null;
 
-    // 최종 사용자 ID (실제 > Dev)
-    const currentUserId = realUserId || devUserId;
+    // 최종 사용자 ID (실제 > Dev > null)
+    // 로그아웃 상태에서는 null이어야 함
+    const currentUserId = realUserId || devUserId || "";
     const currentUserNickname = getUserNickname(currentUserId);
 
     const [crews, setCrews] = useState<Crew[]>(MOCK_CREWS);
@@ -833,6 +839,21 @@ export function CrewProvider({ children }: { children: ReactNode }) {
         );
     }, [members, currentUserId]);
 
+    // 현재 사용자와 특정 사용자가 같은 크루에 속해 있는지 확인
+    const sharesCrew = useCallback((targetUserId: string): boolean => {
+        if (!currentUserId || currentUserId === targetUserId) return false;
+
+        // 현재 사용자가 속한 크루 목록
+        const myCrewIds = members
+            .filter(m => m.userId === currentUserId)
+            .map(m => m.crewId);
+
+        // 대상 사용자가 속한 크루 중 현재 사용자도 속한 크루가 있는지 확인
+        return members.some(
+            m => m.userId === targetUserId && myCrewIds.includes(m.crewId)
+        );
+    }, [members, currentUserId]);
+
     // ===== 가입 신청 관련 =====
 
     // 가입 신청 (approval 타입)
@@ -1127,6 +1148,7 @@ export function CrewProvider({ children }: { children: ReactNode }) {
                 leaveCrew: leaveCrewFn,
                 isMember,
                 isLeader,
+                sharesCrew,
                 currentUserId,
                 // 가입 신청 관련
                 requestJoinCrew: requestJoinCrewFn,

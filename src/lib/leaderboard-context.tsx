@@ -4,16 +4,24 @@ import {
     createContext,
     useContext,
     useMemo,
+    useState,
+    useEffect,
+    useCallback,
     ReactNode,
 } from "react";
 import {
     LeaderboardScore,
     LeaderboardPeriod,
     ACTIVITY_SCORES,
+    PENALTY_SCORES,
     calculateScore,
 } from "@/types/leaderboard";
+import type { ReportTargetType } from "@/types/report";
 import { MOCK_USER_PROFILES } from "./follow-context";
 import { MOCK_POSTS } from "./mock-data";
+import { useAuth } from "./auth-context";
+import { useBlock } from "./block-context";
+import { getLeaderboardDb } from "./supabase/queries";
 
 // ===== Mock 활동 데이터 생성 =====
 
@@ -86,6 +94,11 @@ function aggregateUserActivities(): UserActivity[] {
 
 // ===== Context =====
 
+// 사용자별 페널티 점수 (신고 등으로 인한 차감)
+interface UserPenalties {
+    [userId: string]: number;
+}
+
 interface LeaderboardContextValue {
     /** 리더보드 조회 */
     getLeaderboard: (period: LeaderboardPeriod, limit?: number) => LeaderboardScore[];
@@ -93,16 +106,66 @@ interface LeaderboardContextValue {
     getUserRanking: (userId: string, period: LeaderboardPeriod) => LeaderboardScore | null;
     /** Top N 조회 */
     getTopUsers: (n: number) => LeaderboardScore[];
+    /** 로딩 상태 */
+    isLoading: boolean;
+    /** Supabase 연동 여부 */
+    isFromSupabase: boolean;
+    /** 데이터 새로고침 */
+    refresh: () => void;
+    /** 신고 시 점수 차감 */
+    deductScoreForReport: (targetUserId: string, targetType: ReportTargetType) => void;
+    /** 특정 사용자의 페널티 점수 조회 */
+    getUserPenalty: (userId: string) => number;
 }
 
 const LeaderboardContext = createContext<LeaderboardContextValue | null>(null);
 
+// localStorage 키
+const PENALTIES_STORAGE_KEY = "fesmate_leaderboard_penalties";
+
 export function LeaderboardProvider({ children }: { children: ReactNode }) {
-    // 사용자별 활동 집계
+    const { user: authUser } = useAuth();
+    const { isBlocked } = useBlock();
+
+    // 실제 인증 사용자 여부
+    const isRealUser = !!authUser?.id;
+
+    const [supabaseLeaderboard, setSupabaseLeaderboard] = useState<LeaderboardScore[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isFromSupabase, setIsFromSupabase] = useState(false);
+    const [isInitialized, setIsInitialized] = useState(false);
+    const [penalties, setPenalties] = useState<UserPenalties>({});
+    const [penaltiesLoaded, setPenaltiesLoaded] = useState(false);
+
+    // 페널티 localStorage에서 로드
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        try {
+            const stored = localStorage.getItem(PENALTIES_STORAGE_KEY);
+            if (stored) {
+                setPenalties(JSON.parse(stored));
+            }
+        } catch (error) {
+            console.error("[LeaderboardContext] Failed to load penalties:", error);
+        }
+        setPenaltiesLoaded(true);
+    }, []);
+
+    // 페널티 localStorage에 저장
+    useEffect(() => {
+        if (!penaltiesLoaded || typeof window === "undefined") return;
+        try {
+            localStorage.setItem(PENALTIES_STORAGE_KEY, JSON.stringify(penalties));
+        } catch (error) {
+            console.error("[LeaderboardContext] Failed to save penalties:", error);
+        }
+    }, [penalties, penaltiesLoaded]);
+
+    // 사용자별 활동 집계 (Mock 데이터용)
     const userActivities = useMemo(() => aggregateUserActivities(), []);
 
-    // 리더보드 점수 계산 및 랭킹
-    const leaderboard = useMemo((): LeaderboardScore[] => {
+    // Mock 리더보드 점수 계산 및 랭킹 (페널티 반영)
+    const mockLeaderboard = useMemo((): LeaderboardScore[] => {
         const scores = userActivities.map(activity => {
             const user = MOCK_USER_PROFILES.find(u => u.id === activity.userId);
             if (!user) return null;
@@ -115,7 +178,10 @@ export function LeaderboardProvider({ children }: { children: ReactNode }) {
                 attended: activity.attended,
             };
 
-            const totalScore = calculateScore(breakdown);
+            // 기본 점수 + 페널티 (음수) 반영
+            const baseScore = calculateScore(breakdown);
+            const penaltyScore = penalties[user.id] || 0;
+            const totalScore = Math.max(0, baseScore + penaltyScore); // 최소 0점
 
             return {
                 userId: user.id,
@@ -138,7 +204,61 @@ export function LeaderboardProvider({ children }: { children: ReactNode }) {
         });
 
         return scores;
-    }, [userActivities]);
+    }, [userActivities, penalties]);
+
+    // Supabase에서 리더보드 로드
+    const loadFromSupabase = useCallback(async () => {
+        if (!isRealUser) return;
+
+        setIsLoading(true);
+        try {
+            const dbLeaderboard = await getLeaderboardDb();
+            // 랭킹 변화 시뮬레이션 추가
+            dbLeaderboard.forEach((score, index) => {
+                const mockChanges = [2, -1, 1, 0, -2, 1];
+                score.rankChange = mockChanges[index % mockChanges.length];
+            });
+            setSupabaseLeaderboard(dbLeaderboard);
+            setIsFromSupabase(true);
+        } catch (error) {
+            console.error("[LeaderboardContext] Supabase load failed:", error);
+            setIsFromSupabase(false);
+        } finally {
+            setIsLoading(false);
+            setIsInitialized(true);
+        }
+    }, [isRealUser]);
+
+    // 초기 로드
+    useEffect(() => {
+        if (!isInitialized) {
+            if (isRealUser) {
+                loadFromSupabase();
+            } else {
+                setIsInitialized(true);
+                setIsFromSupabase(false);
+            }
+        }
+    }, [isRealUser, isInitialized, loadFromSupabase]);
+
+    // 새로고침 함수
+    const refresh = useCallback(() => {
+        if (isRealUser) {
+            loadFromSupabase();
+        }
+    }, [isRealUser, loadFromSupabase]);
+
+    // 최종 리더보드 (Supabase 데이터 우선, 차단 사용자 필터링)
+    const leaderboard = useMemo(() => {
+        const baseBoard = isFromSupabase ? supabaseLeaderboard : mockLeaderboard;
+        // 차단된 사용자 필터링
+        const filtered = baseBoard.filter(s => !isBlocked(s.userId));
+        // 랭킹 재계산
+        filtered.forEach((score, index) => {
+            score.rank = index + 1;
+        });
+        return filtered;
+    }, [isFromSupabase, supabaseLeaderboard, mockLeaderboard, isBlocked]);
 
     // 기간별 리더보드 (Mock: 실제로는 기간별 필터링 필요)
     const getLeaderboard = useMemo(() => {
@@ -187,12 +307,36 @@ export function LeaderboardProvider({ children }: { children: ReactNode }) {
         };
     }, [leaderboard]);
 
+    // 신고 시 점수 차감
+    const deductScoreForReport = useCallback((targetUserId: string, targetType: ReportTargetType) => {
+        const penaltyAmount = targetType === "user"
+            ? PENALTY_SCORES.reported_user
+            : PENALTY_SCORES.reported_content;
+
+        setPenalties(prev => ({
+            ...prev,
+            [targetUserId]: (prev[targetUserId] || 0) + penaltyAmount,
+        }));
+
+        console.log(`[LeaderboardContext] Deducted ${penaltyAmount} points from user ${targetUserId} for ${targetType} report`);
+    }, []);
+
+    // 사용자 페널티 조회
+    const getUserPenalty = useCallback((userId: string): number => {
+        return penalties[userId] || 0;
+    }, [penalties]);
+
     return (
         <LeaderboardContext.Provider
             value={{
                 getLeaderboard,
                 getUserRanking,
                 getTopUsers,
+                isLoading,
+                isFromSupabase,
+                refresh,
+                deductScoreForReport,
+                getUserPenalty,
             }}
         >
             {children}

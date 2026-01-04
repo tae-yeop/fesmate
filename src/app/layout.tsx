@@ -14,6 +14,7 @@ import { CommentProvider } from "@/lib/comment-context";
 import { MyTimetableProvider } from "@/lib/my-timetable-context";
 import { BadgeProvider } from "@/lib/badge-context";
 import { CrewProvider } from "@/lib/crew-context";
+import { CrewSubgroupProvider } from "@/lib/crew-subgroup-context";
 import { FollowProvider } from "@/lib/follow-context";
 import { UserProfileProvider } from "@/lib/user-profile-context";
 import { LeaderboardProvider } from "@/lib/leaderboard-context";
@@ -24,6 +25,14 @@ import { PostProvider } from "@/lib/post-context";
 import { NotificationProvider } from "@/lib/notification-context";
 import { CallGuideProvider } from "@/lib/call-guide-context";
 import { TicketBookProvider } from "@/lib/ticketbook-context";
+import { GalleryProvider } from "@/lib/gallery-context";
+import { EventRegistrationProvider } from "@/lib/event-registration-context";
+import { TimetableSuggestionProvider } from "@/lib/timetable-suggestion-context";
+import { RateLimitProvider } from "@/lib/rate-limit-context";
+import { TrustProvider } from "@/lib/trust-context";
+import { SanctionProvider } from "@/lib/sanction-context";
+import { PushProvider } from "@/lib/push-context";
+import { NotificationPermissionBanner } from "@/components/notification";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -39,6 +48,16 @@ const notoSansKr = Noto_Sans_KR({
 export const metadata: Metadata = {
   title: "FesMate - Festival Mate",
   description: "Your ultimate festival companion",
+  manifest: "/manifest.json",
+  themeColor: "#6366f1",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "FesMate",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export default function RootLayout({
@@ -54,9 +73,13 @@ export default function RootLayout({
         <AuthProvider>
           <DevProvider>
             <BlockProvider>
+              <SanctionProvider>
+              <TrustProvider>
+              <RateLimitProvider>
               <WishlistProvider>
                 <BadgeProvider>
                 <CrewProvider>
+                <CrewSubgroupProvider>
                 <FollowProvider>
                 <UserProfileProvider>
                 <HelpfulProvider>
@@ -70,6 +93,10 @@ export default function RootLayout({
                       <NotificationProvider>
                       <CallGuideProvider>
                       <TicketBookProvider>
+                      <GalleryProvider>
+                      <EventRegistrationProvider>
+                      <TimetableSuggestionProvider>
+                      <PushProvider>
                       <DevStatusBar />
                       <div className="relative flex min-h-screen flex-col">
                         <Header />
@@ -77,7 +104,12 @@ export default function RootLayout({
                         <MobileNav />
                         <DevPanel />
                         <BadgeToast />
+                        <NotificationPermissionBanner />
                       </div>
+                      </PushProvider>
+                      </TimetableSuggestionProvider>
+                      </EventRegistrationProvider>
+                      </GalleryProvider>
                       </TicketBookProvider>
                       </CallGuideProvider>
                       </NotificationProvider>
@@ -91,9 +123,13 @@ export default function RootLayout({
                 </HelpfulProvider>
                 </UserProfileProvider>
                 </FollowProvider>
+                </CrewSubgroupProvider>
                 </CrewProvider>
                 </BadgeProvider>
               </WishlistProvider>
+              </RateLimitProvider>
+              </TrustProvider>
+              </SanctionProvider>
             </BlockProvider>
           </DevProvider>
         </AuthProvider>
