@@ -4,6 +4,10 @@ export { TicketGrid } from "./TicketGrid";
 export { TicketViewer } from "./TicketViewer";
 export { TicketUploadModal } from "./TicketUploadModal";
 export { TicketEditorModal } from "./TicketEditorModal";
+export { ShareModal } from "./ShareModal";
+export { CreateShareModal } from "./CreateShareModal";
+export { InstaStoryTemplate } from "./InstaStoryTemplate";
+export { TicketbookShareModal } from "./TicketbookShareModal";
 
 // View system components
 export { TicketCardView, getTicketOrientation } from "./TicketCardView";

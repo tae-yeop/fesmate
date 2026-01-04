@@ -35,6 +35,9 @@ import { PostType, POST_TYPE_LABELS } from "@/types/post";
 import { UploadedImage } from "@/types/image";
 import { useAuth } from "@/lib/auth-context";
 import { useDevContext } from "@/lib/dev-context";
+import { usePost } from "@/lib/post-context";
+import { useRateLimit } from "@/lib/rate-limit-context";
+import { filterContent, hasBlockedLinks } from "@/lib/content-filter";
 import { ImageUploader } from "@/components/image";
 import { MOCK_EVENTS } from "@/lib/mock-data";
 import { useWishlist } from "@/lib/wishlist-context";
@@ -113,7 +116,13 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, o
     const { user, isLoading } = useAuth();
     const { isLoggedIn: isDevLoggedIn } = useDevContext();
     const { wishlist } = useWishlist();
+    const { createPost } = usePost();
+    const { checkRateLimit, recordPost, getCooldownStatus } = useRateLimit();
     const isEditMode = !!editPost;
+
+    // 에러/경고 상태
+    const [submitError, setSubmitError] = useState<string | null>(null);
+    const [contentWarning, setContentWarning] = useState<string | null>(null);
 
     // 실제 로그인 또는 Dev 모드 로그인 상태 확인
     const isLoggedIn = !!user || isDevLoggedIn;
@@ -208,7 +217,10 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, o
         setSelectedType(null);
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
+        setSubmitError(null);
+        setContentWarning(null);
+
         if (isEditMode && editPost && onEditComplete) {
             // 수정 모드: 콜백 호출
             onEditComplete(editPost.id, {
@@ -220,21 +232,61 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, o
             });
         } else {
             // 신규 작성 모드
-            // 이미지 URL 배열로 변환 (나중에 백엔드로 전송 시 사용)
-            const imageUrls = images.map(img => img.url);
-            console.log({
+            if (!selectedType || !selectedEventId) return;
+
+            // 1. Rate Limit 체크
+            const rateLimitResult = checkRateLimit(selectedType);
+            if (!rateLimitResult.allowed) {
+                setSubmitError(rateLimitResult.message || "잠시 후 다시 시도해주세요");
+                return;
+            }
+
+            // 2. 금지어 필터 체크
+            const filterResult = filterContent(content);
+            if (!filterResult.passed) {
+                if (filterResult.level === "warn") {
+                    setContentWarning(filterResult.message || "부적절한 내용이 포함되어 있습니다");
+                    // 경고는 한 번 표시 후 다시 제출하면 통과
+                    if (!contentWarning) return;
+                } else {
+                    setSubmitError(filterResult.message || "부적절한 내용으로 작성할 수 없습니다");
+                    return;
+                }
+            }
+
+            // 3. 링크 검증 (본문 + 영상 URL)
+            const contentToCheck = videoUrl ? `${content} ${videoUrl}` : content;
+            const linkCheck = hasBlockedLinks(contentToCheck);
+            if (linkCheck.blocked) {
+                setSubmitError("허용되지 않는 링크가 포함되어 있습니다");
+                return;
+            }
+            // 단축 URL 경고
+            if (linkCheck.warnings.length > 0) {
+                setContentWarning(linkCheck.warnings[0]);
+                if (!contentWarning) return;
+            }
+
+            // 4. 글 생성
+            const newPost = await createPost({
                 eventId: selectedEventId,
                 type: selectedType,
                 content,
-                images: imageUrls,
-                meetTime,
-                placeText,
-                placeHint,
-                maxPeople,
-                rating,
-                videoUrl,
+                maxPeople: maxPeople > 1 ? maxPeople : undefined,
+                meetAt: meetTime ? new Date(meetTime) : undefined,
+                placeText: placeText || undefined,
+                placeHint: placeHint || undefined,
             });
+
+            if (newPost) {
+                // Rate limit 기록
+                recordPost(newPost.id, selectedType);
+            } else {
+                setSubmitError("글 작성에 실패했습니다. 다시 시도해주세요.");
+                return;
+            }
         }
+
         onClose();
         // 폼 리셋
         setStep("select");
@@ -248,6 +300,8 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, o
         setMaxPeople(4);
         setRating(5);
         setVideoUrl("");
+        setSubmitError(null);
+        setContentWarning(null);
     };
 
     const isValid = () => {
@@ -344,6 +398,25 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, o
                 {/* 하단 액션 (compose 단계에서만) */}
                 {step === "compose" && (
                     <div className="border-t">
+                        {/* 에러 메시지 */}
+                        {submitError && (
+                            <div className="px-4 py-2 bg-red-50 border-b border-red-100">
+                                <p className="text-sm text-red-600 flex items-center gap-2">
+                                    <AlertTriangle className="h-4 w-4" />
+                                    {submitError}
+                                </p>
+                            </div>
+                        )}
+                        {/* 경고 메시지 (계속하기 가능) */}
+                        {contentWarning && !submitError && (
+                            <div className="px-4 py-2 bg-amber-50 border-b border-amber-100">
+                                <p className="text-sm text-amber-700 flex items-center gap-2">
+                                    <AlertTriangle className="h-4 w-4" />
+                                    {contentWarning}
+                                    <span className="text-xs">(다시 클릭하면 게시됩니다)</span>
+                                </p>
+                            </div>
+                        )}
                         {/* 이미지 업로더 (토글) */}
                         {showImageUploader && (
                             <div className="px-4 pt-3 pb-1 border-b bg-muted/30">

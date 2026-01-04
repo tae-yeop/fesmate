@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, AlertTriangle, Check } from "lucide-react";
+import { X, AlertTriangle, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
     ReportReason,
@@ -9,6 +9,9 @@ import {
     REPORT_REASON_LABELS,
     REPORT_REASON_DESCRIPTIONS,
 } from "@/types/report";
+import { submitReport } from "@/lib/supabase/queries";
+import { useLeaderboard } from "@/lib/leaderboard-context";
+import { usePost } from "@/lib/post-context";
 
 interface ReportModalProps {
     isOpen: boolean;
@@ -16,6 +19,7 @@ interface ReportModalProps {
     targetType: ReportTargetType;
     targetId: string;
     targetUserId: string;
+    reporterId?: string; // 현재 로그인한 사용자 ID
     onSubmit?: (reason: ReportReason, detail?: string) => void;
 }
 
@@ -42,12 +46,16 @@ export function ReportModal({
     targetType,
     targetId,
     targetUserId,
+    reporterId,
     onSubmit,
 }: ReportModalProps) {
+    const { deductScoreForReport } = useLeaderboard();
+    const { reportPost } = usePost();
     const [selectedReason, setSelectedReason] = useState<ReportReason | null>(null);
     const [detail, setDetail] = useState("");
     const [step, setStep] = useState<"select" | "confirm" | "done">("select");
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     if (!isOpen) return null;
 
@@ -55,28 +63,56 @@ export function ReportModal({
         post: "게시글",
         comment: "댓글",
         user: "사용자",
+        call_guide: "콜가이드",
+        call_guide_entry: "콜가이드 항목",
     }[targetType];
 
     const handleSubmit = async () => {
         if (!selectedReason) return;
 
         setIsSubmitting(true);
+        setError(null);
 
-        // 실제로는 API 호출
-        await new Promise(resolve => setTimeout(resolve, 500));
+        try {
+            // Supabase에 신고 저장 (reporterId가 있는 경우에만)
+            if (reporterId) {
+                await submitReport({
+                    reporterId,
+                    targetType,
+                    targetId,
+                    targetUserId,
+                    reason: selectedReason,
+                    detail: detail || undefined,
+                });
+            }
 
-        if (onSubmit) {
-            onSubmit(selectedReason, detail || undefined);
+            // 신고 대상 사용자 점수 차감
+            deductScoreForReport(targetUserId, targetType);
+
+            // 글 신고인 경우 신고 카운트 증가 (3회 이상 시 자동 숨김)
+            if (targetType === "post") {
+                reportPost(targetId);
+            }
+
+            // 콜백 호출
+            if (onSubmit) {
+                onSubmit(selectedReason, detail || undefined);
+            }
+
+            setStep("done");
+        } catch (err) {
+            console.error("[ReportModal] Submit error:", err);
+            setError("신고 접수 중 오류가 발생했습니다. 다시 시도해주세요.");
+        } finally {
+            setIsSubmitting(false);
         }
-
-        setIsSubmitting(false);
-        setStep("done");
     };
 
     const handleClose = () => {
         setSelectedReason(null);
         setDetail("");
         setStep("select");
+        setError(null);
         onClose();
     };
 
@@ -202,19 +238,34 @@ export function ReportModal({
                                 )}
                             </div>
 
+                            {/* 에러 메시지 */}
+                            {error && (
+                                <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg">
+                                    {error}
+                                </div>
+                            )}
+
                             <div className="flex gap-2">
                                 <button
                                     onClick={() => setStep("select")}
-                                    className="flex-1 py-3 rounded-lg font-medium border hover:bg-muted transition-colors"
+                                    disabled={isSubmitting}
+                                    className="flex-1 py-3 rounded-lg font-medium border hover:bg-muted transition-colors disabled:opacity-50"
                                 >
                                     뒤로
                                 </button>
                                 <button
                                     onClick={handleSubmit}
                                     disabled={isSubmitting}
-                                    className="flex-1 py-3 rounded-lg font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
+                                    className="flex-1 py-3 rounded-lg font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                                 >
-                                    {isSubmitting ? "처리 중..." : "신고 접수"}
+                                    {isSubmitting ? (
+                                        <>
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                            처리 중...
+                                        </>
+                                    ) : (
+                                        "신고 접수"
+                                    )}
                                 </button>
                             </div>
                         </div>

@@ -31,7 +31,7 @@ export function PostDetailModal({ post, isOpen, onClose }: PostDetailModalProps)
     const router = useRouter();
     const { user } = useAuth();
     const { isLoggedIn: isDevLoggedIn, mockUserId } = useDevContext();
-    const { toggleHelpful, isHelpful, getHelpfulCount } = useHelpful();
+    const { toggleHelpful, isHelpful, getHelpfulCount, isOwnPost: isOwnPostForHelpful } = useHelpful();
     const { getCommentsByPostId, getCommentCount, addComment } = useComment();
     const { hasRequested } = useJoin();
 
@@ -441,14 +441,20 @@ export function PostDetailModal({ post, isOpen, onClose }: PostDetailModalProps)
                                             setShowLoginPrompt(true);
                                             return;
                                         }
-                                        toggleHelpful(post.id);
+                                        if (!isOwnPostForHelpful(post.userId)) {
+                                            toggleHelpful(post.id, post.userId);
+                                        }
                                     }}
+                                    disabled={isOwnPostForHelpful(post.userId)}
                                     className={cn(
                                         "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors",
-                                        helpful
-                                            ? "bg-primary text-primary-foreground"
-                                            : "border hover:bg-accent"
+                                        isOwnPostForHelpful(post.userId)
+                                            ? "opacity-50 cursor-not-allowed border"
+                                            : helpful
+                                                ? "bg-primary text-primary-foreground"
+                                                : "border hover:bg-accent"
                                     )}
+                                    title={isOwnPostForHelpful(post.userId) ? "내 글에는 도움됨을 표시할 수 없습니다" : undefined}
                                 >
                                     <ThumbsUp className={cn("h-4 w-4", helpful && "fill-current")} />
                                     도움됨 {helpfulCount}
