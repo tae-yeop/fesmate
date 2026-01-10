@@ -6,6 +6,11 @@
  * 글(Post) 관리를 위한 Context
  * - 실제 로그인 사용자: Supabase DB 사용
  * - Dev 모드/비로그인: localStorage + Mock 데이터 사용
+ *
+ * Supabase 연동 완료:
+ * - CRUD 작업: dataMode === "supabase"일 때 DB 사용
+ * - 신고 기능: reports 테이블과 연동 (submitReport)
+ * - 숨김 처리: reports 테이블의 신고 수 카운트로 판단
  */
 
 import {
@@ -22,7 +27,7 @@ import { useAuth } from "./auth-context";
 import { useDevContext } from "./dev-context";
 import { useBlock } from "./block-context";
 import { isValidUUID } from "./utils";
-import { MOCK_POSTS, getCommunityPosts as getMockCommunityPosts } from "./mock-data";
+import { MOCK_POSTS } from "./mock-data";
 import type { Post, PostType, PostStatus } from "@/types/post";
 
 import {
@@ -39,11 +44,36 @@ import {
     bumpPost as bumpPostInDb,
     incrementCurrentPeople as incrementCurrentPeopleInDb,
     decrementCurrentPeople as decrementCurrentPeopleInDb,
+    submitReport as submitReportToDb,
     type CreatePostInput,
     type UpdatePostInput,
 } from "./supabase/queries";
+import { createClient } from "./supabase/client";
 import { createSharedAdapter } from "./storage";
 import { DOMAINS } from "./storage/keys";
+
+// ===== Helper Functions =====
+
+/**
+ * Supabase에서 특정 글의 신고 수 조회
+ * reports 테이블에서 target_type='post' AND target_id={postId} 카운트
+ */
+async function getReportCountFromDb(postId: string): Promise<number> {
+    const supabase = createClient();
+
+    const { count, error } = await supabase
+        .from("reports")
+        .select("*", { count: "exact", head: true })
+        .eq("target_type", "post")
+        .eq("target_id", postId);
+
+    if (error) {
+        console.error("[getReportCountFromDb] Error:", error);
+        return 0;
+    }
+
+    return count || 0;
+}
 
 // ===== Types =====
 
@@ -80,9 +110,11 @@ interface PostContextValue {
     refreshPosts: () => Promise<void>;
 
     // 신고 관련
-    /** 글에 신고 접수 (신고 수 증가 + 임계값 도달 시 자동 숨김) */
-    reportPost: (postId: string) => void;
-    /** 숨김 글인지 확인 */
+    /** 글에 신고 접수 (Supabase: reports 테이블에 저장) */
+    reportPost: (postId: string, reason?: string, detail?: string) => Promise<boolean>;
+    /** 글의 신고 수 조회 */
+    getReportCount: (postId: string) => Promise<number>;
+    /** 숨김 글인지 확인 (신고 임계값 기준) */
     isPostHidden: (postId: string) => boolean;
     /** 숨김 글 목록 조회 (자기 글만) */
     getHiddenPosts: () => Post[];
@@ -529,29 +561,89 @@ export function PostProvider({ children }: { children: ReactNode }) {
         [useSupabase]
     );
 
-    // 글 신고 접수 (신고 수 증가 + 임계값 도달 시 자동 숨김)
+    // 글 신고 접수 (Supabase: reports 테이블에 저장, Mock: 로컬 상태 업데이트)
     const reportPost = useCallback(
-        (postId: string) => {
-            setPosts(prev =>
-                prev.map(p => {
-                    if (p.id !== postId) return p;
+        async (postId: string, reason: string = "other", detail?: string): Promise<boolean> => {
+            if (!currentUserId) {
+                console.error("[PostContext] Cannot report: no current user");
+                return false;
+            }
 
-                    const newReportCount = (p.reportCount || 0) + 1;
-                    const shouldHide = newReportCount >= REPORT_THRESHOLD_HIDE;
+            const post = posts.find(p => p.id === postId);
+            if (!post) {
+                console.error("[PostContext] Cannot report: post not found");
+                return false;
+            }
 
-                    console.log(`[PostContext] Post ${postId} reported. Count: ${newReportCount}, Hidden: ${shouldHide}`);
+            if (useSupabase && isValidUUID(postId) && isValidUUID(currentUserId)) {
+                // Supabase 모드: reports 테이블에 신고 저장
+                try {
+                    await submitReportToDb({
+                        reporterId: currentUserId,
+                        targetType: "post",
+                        targetId: postId,
+                        targetUserId: post.userId,
+                        reason: reason as "spam" | "scam" | "abuse" | "hate" | "harassment" | "privacy" | "illegal" | "other",
+                        detail,
+                    });
+                    console.log(`[PostContext] Post ${postId} reported to Supabase`);
 
-                    return {
-                        ...p,
-                        reportCount: newReportCount,
-                        isHidden: shouldHide || p.isHidden,
-                        hiddenAt: shouldHide && !p.isHidden ? new Date() : p.hiddenAt,
-                        updatedAt: new Date(),
-                    };
-                })
-            );
+                    // 신고 수 조회하여 숨김 여부 업데이트
+                    const reportCount = await getReportCountFromDb(postId);
+                    const shouldHide = reportCount >= REPORT_THRESHOLD_HIDE;
+
+                    if (shouldHide) {
+                        setPosts(prev =>
+                            prev.map(p =>
+                                p.id === postId
+                                    ? { ...p, reportCount, isHidden: true, hiddenAt: new Date() }
+                                    : p
+                            )
+                        );
+                    }
+
+                    return true;
+                } catch (error) {
+                    console.error("[PostContext] Failed to report post:", error);
+                    return false;
+                }
+            } else {
+                // Mock 모드: 로컬 상태만 업데이트
+                setPosts(prev =>
+                    prev.map(p => {
+                        if (p.id !== postId) return p;
+
+                        const newReportCount = (p.reportCount || 0) + 1;
+                        const shouldHide = newReportCount >= REPORT_THRESHOLD_HIDE;
+
+                        console.log(`[PostContext] Post ${postId} reported (Mock). Count: ${newReportCount}, Hidden: ${shouldHide}`);
+
+                        return {
+                            ...p,
+                            reportCount: newReportCount,
+                            isHidden: shouldHide || p.isHidden,
+                            hiddenAt: shouldHide && !p.isHidden ? new Date() : p.hiddenAt,
+                            updatedAt: new Date(),
+                        };
+                    })
+                );
+                return true;
+            }
         },
-        []
+        [currentUserId, posts, useSupabase]
+    );
+
+    // 글의 신고 수 조회
+    const getReportCount = useCallback(
+        async (postId: string): Promise<number> => {
+            if (useSupabase && isValidUUID(postId)) {
+                return getReportCountFromDb(postId);
+            } else {
+                const post = posts.find(p => p.id === postId);
+                return post?.reportCount || 0;
+            }
+        },
+        [useSupabase, posts]
     );
 
     // 글이 숨겨졌는지 확인
@@ -588,6 +680,7 @@ export function PostProvider({ children }: { children: ReactNode }) {
             decrementCurrentPeople,
             refreshPosts,
             reportPost,
+            getReportCount,
             isPostHidden,
             getHiddenPosts,
         }),
@@ -609,6 +702,7 @@ export function PostProvider({ children }: { children: ReactNode }) {
             decrementCurrentPeople,
             refreshPosts,
             reportPost,
+            getReportCount,
             isPostHidden,
             getHiddenPosts,
         ]
