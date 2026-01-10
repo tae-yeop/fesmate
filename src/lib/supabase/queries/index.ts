@@ -342,3 +342,17 @@ export {
     type AdminDashboardStats,
     type UserWithSuspension,
 } from "./admin";
+
+// User Event Registration (사용자 행사 등록)
+export {
+    getUserRegisteredEvents,
+    getAllUserEvents,
+    getUserEventById,
+    createUserEvent,
+    updateUserEvent,
+    deleteUserEvent,
+    isEventOwner,
+    type CreateUserEventInput,
+    type UpdateUserEventInput,
+    type UserEventWithRelations,
+} from "./event-registration";

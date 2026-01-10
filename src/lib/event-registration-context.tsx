@@ -23,6 +23,14 @@ import {
     SimilarEventMatch,
     calculateEventSimilarity,
 } from "@/types/event-registration";
+import {
+    getUserRegisteredEvents,
+    getAllUserEvents,
+    createUserEvent,
+    updateUserEvent as updateUserEventDb,
+    deleteUserEvent as deleteUserEventDb,
+    type UserEventWithRelations,
+} from "@/lib/supabase/queries";
 
 // ===== Mock 데이터 =====
 
@@ -139,11 +147,54 @@ export function EventRegistrationProvider({ children }: { children: ReactNode })
     useEffect(() => {
         if (isLoaded) return;
 
-        // 실제 사용자: Supabase에서 로드 (TODO: 구현)
-        if (isRealUser) {
-            // 현재는 Mock 데이터 사용
-            setIsFromSupabase(false);
-            setIsLoaded(true);
+        // 실제 사용자: Supabase에서 로드
+        if (isRealUser && realUserId) {
+            setIsLoading(true);
+            Promise.all([
+                getUserRegisteredEvents(realUserId),
+                getAllUserEvents(),
+            ])
+                .then(([myEvents, allEvents]) => {
+                    // Supabase 데이터를 UserRegisteredEvent 형태로 변환
+                    const convertToUserRegisteredEvent = (e: UserEventWithRelations): UserRegisteredEvent => ({
+                        id: e.id,
+                        title: e.title,
+                        startAt: e.startAt,
+                        endAt: e.endAt,
+                        timezone: e.timezone,
+                        venue: e.venue,
+                        type: e.type,
+                        status: e.status,
+                        overrideMode: e.overrideMode,
+                        posterUrl: e.posterUrl,
+                        price: e.price,
+                        ticketLinks: e.ticketLinks,
+                        artists: e.artists,
+                        description: e.description,
+                        registeredBy: e.registeredBy || "",
+                        registrationStatus: e.registrationStatus,
+                        source: e.source,
+                        createdAt: new Date(),
+                    });
+
+                    // 내가 등록한 행사 + 다른 사용자의 공개된 행사 병합 (중복 제거)
+                    const myEventIds = new Set(myEvents.map(e => e.id));
+                    const otherEvents = allEvents.filter(e => !myEventIds.has(e.id));
+                    const combined = [...myEvents, ...otherEvents].map(convertToUserRegisteredEvent);
+
+                    setUserEvents(combined);
+                    setIsFromSupabase(true);
+                })
+                .catch((error) => {
+                    console.error("[EventRegistrationContext] Supabase load failed:", error);
+                    // Supabase 실패 시 Mock 데이터로 폴백
+                    setUserEvents(MOCK_USER_EVENTS);
+                    setIsFromSupabase(false);
+                })
+                .finally(() => {
+                    setIsLoading(false);
+                    setIsLoaded(true);
+                });
             return;
         }
 
@@ -158,7 +209,7 @@ export function EventRegistrationProvider({ children }: { children: ReactNode })
         }
 
         setIsLoaded(true);
-    }, [isRealUser, isLoaded]);
+    }, [isRealUser, realUserId, isLoaded]);
 
     // localStorage에 저장 (Dev 모드)
     useEffect(() => {
@@ -202,10 +253,59 @@ export function EventRegistrationProvider({ children }: { children: ReactNode })
 
     // 행사 등록
     const registerEvent = useCallback(async (input: CreateEventInput): Promise<UserRegisteredEvent | null> => {
+        if (!currentUserId) {
+            console.error("[EventRegistrationContext] No user logged in");
+            return null;
+        }
+
         setIsLoading(true);
 
         try {
-            // Venue 생성
+            // 실제 사용자: Supabase에 저장
+            if (isRealUser && realUserId) {
+                const created = await createUserEvent(realUserId, {
+                    title: input.title,
+                    startAt: input.startAt,
+                    endAt: input.endAt,
+                    timezone: input.timezone,
+                    venueName: input.venueName,
+                    venueAddress: input.venueAddress,
+                    venueLat: input.venueLat,
+                    venueLng: input.venueLng,
+                    eventType: input.eventType,
+                    posterUrl: input.posterUrl,
+                    price: input.price,
+                    ticketLinks: input.ticketLinks,
+                    artists: input.artists,
+                    description: input.description,
+                });
+
+                const newEvent: UserRegisteredEvent = {
+                    id: created.id,
+                    title: created.title,
+                    startAt: created.startAt,
+                    endAt: created.endAt,
+                    timezone: created.timezone,
+                    venue: created.venue,
+                    type: created.type,
+                    status: created.status,
+                    overrideMode: created.overrideMode,
+                    posterUrl: created.posterUrl,
+                    price: created.price,
+                    ticketLinks: created.ticketLinks,
+                    artists: created.artists,
+                    description: created.description,
+                    registeredBy: created.registeredBy || realUserId,
+                    registrationStatus: created.registrationStatus,
+                    source: created.source,
+                    createdAt: new Date(),
+                };
+
+                setUserEvents(prev => [...prev, newEvent]);
+                return newEvent;
+            }
+
+            // Dev 모드: localStorage에 저장
             const venue: Venue = {
                 id: `venue-${Date.now()}`,
                 name: input.venueName,
@@ -214,13 +314,11 @@ export function EventRegistrationProvider({ children }: { children: ReactNode })
                 lng: input.venueLng,
             };
 
-            // 아티스트 배열 생성
             const artists = input.artists?.map((name, idx) => ({
                 id: `artist-${Date.now()}-${idx}`,
                 name,
             })) || [];
 
-            // 새 행사 생성
             const newEvent: UserRegisteredEvent = {
                 id: `user-event-${Date.now()}`,
                 title: input.title,
@@ -242,13 +340,7 @@ export function EventRegistrationProvider({ children }: { children: ReactNode })
                 createdAt: new Date(),
             };
 
-            // TODO: Supabase에 저장
-            if (isFromSupabase) {
-                // await createEventInDb(newEvent);
-            }
-
             setUserEvents(prev => [...prev, newEvent]);
-
             return newEvent;
         } catch (error) {
             console.error("[EventRegistrationContext] Failed to register event:", error);
@@ -256,10 +348,12 @@ export function EventRegistrationProvider({ children }: { children: ReactNode })
         } finally {
             setIsLoading(false);
         }
-    }, [currentUserId, isFromSupabase]);
+    }, [currentUserId, isRealUser, realUserId]);
 
     // 행사 수정
     const updateEvent = useCallback(async (eventId: string, updates: Partial<CreateEventInput>): Promise<boolean> => {
+        if (!currentUserId) return false;
+
         setIsLoading(true);
 
         try {
@@ -271,7 +365,59 @@ export function EventRegistrationProvider({ children }: { children: ReactNode })
             // 본인 행사만 수정 가능
             if (event.registeredBy !== currentUserId) return false;
 
-            // Venue 업데이트
+            // 실제 사용자: Supabase 업데이트
+            if (isRealUser && realUserId && isValidUUID(eventId)) {
+                const updated = await updateUserEventDb(realUserId, eventId, {
+                    title: updates.title,
+                    startAt: updates.startAt,
+                    endAt: updates.endAt,
+                    timezone: updates.timezone,
+                    venueName: updates.venueName,
+                    venueAddress: updates.venueAddress,
+                    venueLat: updates.venueLat,
+                    venueLng: updates.venueLng,
+                    eventType: updates.eventType,
+                    posterUrl: updates.posterUrl,
+                    price: updates.price,
+                    ticketLinks: updates.ticketLinks,
+                    artists: updates.artists,
+                    description: updates.description,
+                });
+
+                if (!updated) return false;
+
+                const updatedEvent: UserRegisteredEvent = {
+                    id: updated.id,
+                    title: updated.title,
+                    startAt: updated.startAt,
+                    endAt: updated.endAt,
+                    timezone: updated.timezone,
+                    venue: updated.venue,
+                    type: updated.type,
+                    status: updated.status,
+                    overrideMode: updated.overrideMode,
+                    posterUrl: updated.posterUrl,
+                    price: updated.price,
+                    ticketLinks: updated.ticketLinks,
+                    artists: updated.artists,
+                    description: updated.description,
+                    registeredBy: updated.registeredBy || realUserId,
+                    registrationStatus: updated.registrationStatus,
+                    source: updated.source,
+                    createdAt: event.createdAt,
+                    updatedAt: new Date(),
+                };
+
+                setUserEvents(prev => {
+                    const next = [...prev];
+                    next[eventIndex] = updatedEvent;
+                    return next;
+                });
+
+                return true;
+            }
+
+            // Dev 모드: localStorage 업데이트
             let venue = event.venue;
             if (updates.venueName || updates.venueAddress) {
                 venue = {
@@ -283,7 +429,6 @@ export function EventRegistrationProvider({ children }: { children: ReactNode })
                 };
             }
 
-            // 아티스트 업데이트
             let artists = event.artists;
             if (updates.artists) {
                 artists = updates.artists.map((name, idx) => ({
@@ -308,11 +453,6 @@ export function EventRegistrationProvider({ children }: { children: ReactNode })
                 updatedAt: new Date(),
             };
 
-            // TODO: Supabase 업데이트
-            if (isFromSupabase) {
-                // await updateEventInDb(eventId, updatedEvent);
-            }
-
             setUserEvents(prev => {
                 const next = [...prev];
                 next[eventIndex] = updatedEvent;
@@ -326,10 +466,12 @@ export function EventRegistrationProvider({ children }: { children: ReactNode })
         } finally {
             setIsLoading(false);
         }
-    }, [userEvents, currentUserId, isFromSupabase]);
+    }, [userEvents, currentUserId, isRealUser, realUserId]);
 
     // 행사 삭제
     const deleteEvent = useCallback(async (eventId: string): Promise<boolean> => {
+        if (!currentUserId) return false;
+
         setIsLoading(true);
 
         try {
@@ -339,9 +481,10 @@ export function EventRegistrationProvider({ children }: { children: ReactNode })
             // 본인 행사만 삭제 가능
             if (event.registeredBy !== currentUserId) return false;
 
-            // TODO: Supabase 삭제
-            if (isFromSupabase) {
-                // await deleteEventInDb(eventId);
+            // 실제 사용자: Supabase 삭제
+            if (isRealUser && realUserId && isValidUUID(eventId)) {
+                const deleted = await deleteUserEventDb(realUserId, eventId);
+                if (!deleted) return false;
             }
 
             setUserEvents(prev => prev.filter(e => e.id !== eventId));
@@ -353,7 +496,7 @@ export function EventRegistrationProvider({ children }: { children: ReactNode })
         } finally {
             setIsLoading(false);
         }
-    }, [userEvents, currentUserId, isFromSupabase]);
+    }, [userEvents, currentUserId, isRealUser, realUserId]);
 
     // 행사 조회
     const getEvent = useCallback((eventId: string): UserRegisteredEvent | undefined => {

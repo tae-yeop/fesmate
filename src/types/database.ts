@@ -117,6 +117,10 @@ export interface Database {
                     attended_count: number;
                     report_count: number;
                     review_count: number;
+                    // 사용자 행사 등록 관련 컬럼
+                    source: "official" | "user" | "crawl";
+                    registered_by: string | null;
+                    registration_status: "draft" | "pending" | "published" | "rejected";
                     created_at: string;
                     updated_at: string;
                 };
@@ -141,6 +145,10 @@ export interface Database {
                     attended_count?: number;
                     report_count?: number;
                     review_count?: number;
+                    // 사용자 행사 등록 관련 컬럼
+                    source?: "official" | "user" | "crawl";
+                    registered_by?: string | null;
+                    registration_status?: "draft" | "pending" | "published" | "rejected";
                     created_at?: string;
                     updated_at?: string;
                 };
@@ -165,6 +173,10 @@ export interface Database {
                     attended_count?: number;
                     report_count?: number;
                     review_count?: number;
+                    // 사용자 행사 등록 관련 컬럼
+                    source?: "official" | "user" | "crawl";
+                    registered_by?: string | null;
+                    registration_status?: "draft" | "pending" | "published" | "rejected";
                     created_at?: string;
                     updated_at?: string;
                 };
