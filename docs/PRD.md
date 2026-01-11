@@ -1,83 +1,742 @@
-# Product Requirements Document (PRD) - FesMate
+# PRD — 문화 행사 커뮤니티 앱 FesMate (공연/전시/페스티벌) v0.5
 
-## 1. Product Overview
-**Product Name:** FesMate (Festival Mate)
-**Tagline:** Your Ultimate Festival & Concert Companion / 팬 경험을 완성하는 페스티벌 OS
+작성일: 2025-12-17  
+상태: 대화 기반 기획 초안 (MVP 중심)
 
-**Vision:**
-To integrate scattered information and services for cultural activities (concerts, festivals, exhibitions) into a single platform. FesMate aims to be the "OS for Fan Experience," covering everything from discovery and planning to on-site enjoyment and post-event archiving.
+---
 
-**Core Value Proposition:**
-- **Information Hub:** Aggregated details, timetables, and artist info in one place.
-- **Real-time Utility:** Live reporting on queues, inventory, and facilities.
-- **Community:** Safe companion finding and ticket transfer.
-- **Archiving:** Personalized logs (GongLog), ticket books, and stats.
+## 용어 정의 (Glossary)
 
-## 2. Target Audience (Personas)
-1.  **The Heavy Fan / Festival-goer:** Needs fast access to timetables, setlists, and real-time on-site updates (queues, merchandise).
-2.  **The Beginner:** Needs guidance, recommendations, and tips for their first concert/festival.
-3.  **The Safety Seeker:** Wants secure ways to find companions (taxi, accommodation) and transfer tickets without fraud.
-4.  **The Organizer:** (Future B2B) Wants to communicate updates and manage crowd flow effectively.
+- **행사(Event)**: 공연/전시/페스티벌 등 “일정(시작/종료)”과 “장소”를 갖는 최상위 엔터티.
+- **행사 페이지(`/event/{id}`)**: 행사 상세 + 허브 + 타임테이블 + 아티스트를 한 라우트 안에서 탭으로 제공하는 화면.
+- **허브(Hub)**: 행사 안에서 공지/실시간 제보/커뮤니티/리뷰·영상을 통합해 보는 피드 및 요약 영역.
+- **LIVE 모드**: 행사 진행 전/중에 맞춰 “실시간(게이트/MD/시설/안전) + 타임테이블”을 최우선으로 보여주는 허브 상태.
+- **RECAP 모드**: 행사 종료 후 회고 목적의 허브 상태. “총평/베스트 후기·영상/슬롯 요약”을 최우선으로 보여준다.
+- **⭐찜(Wishlist)**: 관심/예매 예정/갈 수도 있는 행사 저장 상태.
+- **✅다녀옴(Attended)**: 관람 완료 상태. 리뷰/영상/기록 기능의 기준이 되는 상태.
+- **슬롯(Slot)**: 타임테이블의 “특정 시간·스테이지(또는 전시 세션)·아티스트(또는 프로그램)” 단위.
+- **Now/Next**: 타임테이블에서 현재 진행/다음 순서를 요약해 보여주는 영역.
+- **글 타입(Post Type)**: 허브/커뮤니티에서 글을 구조화하기 위한 분류(예: 게이트, MD, 시설, 안전, 동행, 양도, 후기, 영상, 질문·팁).
+- **템플릿(Template)**: 글 타입별 입력 폼(필수/선택 필드)을 미리 정의한 작성 방식.
+- **UGC**: 사용자 생성 콘텐츠(제보/후기/영상/커뮤니티 글).
+- **Official 공지**: 운영자 또는 공식 채널 기반으로 등록되는 공지(링크/텍스트 중심).
+- **도움됨(Helpful) 반응**: 글 품질을 신호로 삼는 피드백(정렬/요약/신뢰도에 활용).
+- **신뢰도(A/B/C)**: 실시간 제보의 품질을 단순 등급화한 표시(최근성/증빙/작성자 신호 등 기반, MVP는 단순 규칙).
+- **MyFes**: 사용자의 ⭐찜/✅다녀옴을 섞어 “예정+지난”을 한 타임라인으로 관리하는 개인 아카이브 탭.
 
-## 3. Key Features & Requirements
+---
 
-### 3.1 Event Information (The Hub)
--   **Event Hub Main:** Dashboard-style overview of "Live Now," "Upcoming," and "Recommended" events.
--   **Event Detail:** Comprehensive info including date, venue, lineup, and pricing.
--   **Smart Timetable:** Personalized customization, "Check" feature for notifications, and ICS export.
--   **Artist Page:** Profiles, setlists (interactive), and "Call & Response" guides.
+## 1. 제품 개요
+### 1.1 한 줄 설명
+공연/전시/페스티벌(**행사**) 단위로 **예매 일정·타임테이블·공식 안내·현장 실시간 제보·커뮤니티·리뷰/영상**을 한 곳에 모으는 “행사 허브” 앱.
 
-### 3.2 Community & Safety
--   **Companion Finding:** Structured forms for Taxi, Meal, Accommodation, and Ticket sharing.
--   **Ticket Transfer:** Safe environment for P2P transfers with trust scores.
--   **Reviews:** Detailed post-event reviews with verification (ticket auth).
--   **User Reporting:** Live updates on "Queue Times," "MD Sold Out," etc., with voting/reliability scores.
+### 1.2 전제/제약
+- **써드파티 정보·커뮤니티 서비스**: 예매처의 **좌석/잔여수량/공식 재고** 등 실시간 데이터 직접 연동 불가.
+- **직접 판매/결제 없음**: 티켓/MD를 앱에서 판매하지 않으며 **안전결제/에스크로 미제공**.
+- 실시간 정보는 기본적으로 **사용자 제보(UGC)** 기반 + **공식 공지(링크/수동 입력)** 중심.
 
-### 3.3 Personalization (My Log)
--   **GongLog:** Timeline of attended events.
--   **Ticket Book:** AI-assisted scanning and digital archiving of physical tickets.
--   **Statistics:** "My Year in Concerts," genre preference analysis.
--   **Gamification:** Badges for achievements (e.g., "Attended 5 Rock Festivals").
+> **MVP 구현 원칙**: 데이터 수집 파이프라인/운영자 Admin은 후순위로 두고, **목업/시드 데이터 + Dev 메뉴(디버그)**로 UI/UX 및 핵심 플로우를 검증한다.
 
-### 3.4 Core Tech & Security
--   **Auth:** Social Login (Kakao, Naver, Google) + Mobile verification.
--   **Real-time:** WebSocket/Supabase Realtime for live reports.
--   **Search:** Integrated search for events and artists.
+---
 
-## 4. User Experience (UX) Structure
+## 2. 문제 정의
+### 2.1 현재 사용자 불편
+- **공지(인스타)**와 **실시간 상황(카카오 오픈채팅)**이 분리되어 있어, 현장에서 정보를 얻기 위해 앱/채널을 계속 오가야 함.
+- MD 재고/게이트 혼잡/시설 상황 등은 “원시적인 채팅 정보”로 흩어져 **검색/요약/신뢰도 판단**이 어려움.
+- 행사 종료 후에는 후기/영상/셋리/호응법 등이 파편화되어 **아카이빙/회고(RECAP)**가 힘듦.
 
-### Navigation
--   **Desktop:** Top Menu (Main | Event Hub | Transfer | Artist | My Log)
--   **Mobile:** Bottom Tab Bar (Home | Events | Transfer | Artist | My)
+### 2.2 해결 방향
+- “행사” 페이지 안에 **LIVE(진행 중)**와 **RECAP(종료 후)** 모드를 제공해, 같은 장소에서 실시간 정보와 기록을 모두 처리.
+- 다양한 글을 **글 타입(템플릿) 기반**으로 구조화하여 한눈에 보이고, 도움됨 반응으로 품질을 강화.
 
-### Key Flows
-1.  **Discovery:** Landing Page -> Search/Filter -> Event Detail.
-2.  **On-Site:** Event Detail -> Smart Timetable -> Live Report -> Notifications.
-3.  **Community:** Event Detail -> Companion Board -> Write/Join.
-4.  **Archiving:** My Page -> Write GongLog -> Share.
+---
 
-## 5. Technical Stack
--   **Frontend:** Next.js 15+ (App Router), TypeScript, Tailwind CSS v4.
--   **Backend/DB:** Supabase (PostgreSQL, Auth, Realtime, Storage).
--   **Infrastructure:** Vercel (Hosting), GitHub Actions (CI/CD).
--   **Design:** Mobile-First, Premium Dark/Light Mode.
+## 3. 목표 (Goals) / 비목표 (Non-goals)
+### 3.1 목표
+- 행사 진행 중: 현장 정보(줄/MD/시설)와 타임테이블/공식 안내를 **10초 안에 파악**.
+- 행사 종료 후: 행사 총평 + 슬롯(아티스트 무대) 리뷰/영상이 축적되는 **RECAP 허브** 형성.
+- 사용자가 “찜(관심)”과 “다녀옴(관람)”을 분리 관리하여 **MyFes 타임라인**이 개인 아카이브로 작동.
 
-## 6. Roadmap & Status
-*Current Status: Phase 0 Completed, Phase 2 (UI) in Progress.*
+### 3.2 비목표
+- 예매처 잔여좌석/재고 같은 **공식 실시간 판매 데이터** 제공.
+- 티켓/MD의 **거래 중개, 결제, 에스크로**.
+- (MVP) 자동 수집 파이프라인/운영자 Admin은 미구현(목업/시드 데이터 + Dev 메뉴로 대체).
+- (MVP) **내장 지도(SDK)·지도 뷰 삽입(핀/경로 안내)**은 범위 밖(비용/복잡도 증가). 대신 게시글의 장소는 **지도 앱 딥링크(검색)**로 연결.
 
-| Phase | Feature Set | Status |
-| :--- | :--- | :--- |
-| **Phase 0** | **Project Setup & Design System** | ✅ Completed |
-| **Phase 1** | **Authentication (Social Login)** | 🚧 Planned (Next Step) |
-| **Phase 2** | **Event Info (Hub & Detail UI)** | 🟦 In Progress (UI Done) |
-| **Phase 3** | **Search Functionality** | ⬜ Pending |
-| **Phase 4** | **User Reporting System** | ⬜ Pending |
-| **Phase 5-6** | **Notifications & On-Site Reports** | ⬜ Pending |
-| **Phase 7** | **Smart Timetable** | ⬜ Pending |
-| **Phase 8-10**| **Artist, Companion, Reviews** | ⬜ Pending |
-| **Phase 11+**| **Archiving & Gamification** | ⬜ Pending |
+---
 
-## 7. Success Metrics
--   **Retention:** Daily Active Users (DAU) during festival seasons.
--   **Engagement:** Number of "Checks" on timetables, number of Reports posted.
--   **Growth:** User acquisition via social sharing (Ticket Books, Year-End Reports).
+## 4. 타겟 사용자 & 핵심 시나리오
+### 4.1 사용자
+- 헤비 관람객(페스티벌러/콘서트러): 현장 정보 + 크루/동행
+- 라이트 관람객: 일정 확인 + 후기 기반 선택
+- 안전한 만남이 필요한 사용자: 택시/식사/숙소/직거래 양도
+
+### 4.2 핵심 사용자 여정 (Top Journeys)
+1) **탐색 → 행사 선택 → LIVE 허브 → 제보/동행**
+2) **행사 종료 → RECAP 허브 → 총평/슬롯 리뷰 → 영상 공유**
+3) **찜/다녀옴 관리 → MyFes 타임라인(오늘 앵커) → 내 행사 운영/회고**
+
+---
+
+## 5. 범위 (Scope)
+### 5.1 정보 구조(메인 탭)
+- 홈 / 탐색(행사) / 커뮤니티 / MyFes
+
+### 5.2 탐색(행사) — 뷰 3종
+- 카드뷰 / 리스트뷰 / 캘린더뷰  
+- **캘린더 날짜 클릭 시 대표 카드 1장** 우선 노출:
+  - 대표 카드 선정: **내 찜/팔로우 기반 우선**
+  - 나머지는 스크롤/더보기로 확인
+- 지난 행사 탐색 범위: **최근 1~2년**(기본 12개월, 최대 24개월)
+
+### 5.3 행사 페이지(상세+허브 통합)
+- 단일 라우트: `/event/{id}` 내부 탭/모드로 운영
+- 권장 탭: 개요 / 허브(LIVE·RECAP) / 타임테이블 / 아티스트 / (선택, P2) 후기·영상
+
+### 5.3.1 LIVE → RECAP 전환 규칙 (MVP 확정)
+
+#### 목적
+- 사용자가 별도 조작 없이도 “지금 필요한 정보”가 허브 상단에 기본으로 보이도록 한다.
+
+#### 기본 규칙(자동)
+- 기준 시각은 **행사 로컬 타임존**(기본: Asia/Seoul)으로 계산한다.
+- **기본 모드 = LIVE** 조건: `현재시각 >= (start_at - 24시간)` **AND** `현재시각 < (end_at + 6시간)`
+- **기본 모드 = RECAP** 조건: `현재시각 >= (end_at + 6시간)`
+
+> 메모: 종료 직후에도 줄/MD/퇴장 등 “마지막 실시간” 수요가 있어, 종료 후 **6시간 버퍼**를 둔다.
+
+#### 다일(2일 이상, multi-day) 행사
+- `start_at` = 1일차 시작, `end_at` = **마지막 날 종료**로 정의한다.
+- 따라서 다일 행사에서는 “기간 전체”가 LIVE로 유지되며, 마지막 종료 후 6시간 뒤 RECAP로 전환된다.
+
+#### 운영자 예외(데이터 오류/연기/취소)
+- 운영자는 이벤트 단위로 `override_mode = LIVE | RECAP | AUTO`를 설정할 수 있다.
+- `override_mode != AUTO`일 때는 시간 규칙보다 운영자 설정을 우선한다.
+
+### 5.4 허브 상단 4박스(요약)
+1) 실시간: 게이트/MD/시설/안전 요약  
+2) 타임테이블: Now/Next, 진행 바  
+3) 공식안내: Official 공지(핀) + 링크/미리보기  
+4) 커뮤니티 요약: 동행/양도 최신 글
+
+### 5.5 허브 피드(글 타입 통합)
+- 실시간(게이트/MD/시설/안전), 타임테이블 관련, 공식, 동행, 양도, 후기, 영상, 질문·팁
+- **+ 올리기** CTA → 타입 선택 → 템플릿 작성
+
+---
+
+## 6. 핵심 기능 요구사항 (MVP)
+### 6.0 계정/인증 & 권한 (MVP)
+- 로그인: **카카오 / 네이버 / 구글** (OAuth)
+- 비로그인: 탐색/조회 가능(기본). 아래 행동은 로그인 필요:
+  - 글/댓글 작성, 도움됨 반응
+  - ⭐찜/✅다녀옴, 슬롯 ⭐체크
+  - 알림 설정/푸시 수신
+- 프로필: 닉네임(필수), 프로필 이미지(선택), 한줄소개(선택)
+- 권한(Role):
+  - **USER**: 일반 사용자
+  - **ADMIN(운영자)**: 허브(Official 공지/핀/요약) 편집, LIVE/RECAP override, 행사 데이터 수정/상태 변경, 신고 처리
+
+### 6.1 상태 모델: ⭐찜 vs ✅다녀옴
+- 정의:
+  - ⭐ 찜(Wishlist): 관심
+  - ✅ 다녀옴(Attended): 관람 완료(리뷰/영상/기록 기준)
+- 노출: **3곳**
+  1) 행사 상세 헤더(조작 메인)
+  2) 탐색 카드(표시 + ⭐빠른 토글)
+  3) MyFes 타임라인(상태가 카드/동선에 반영)
+- 기본 진입: MyFes는 **오늘 근처** 앵커로 시작
+
+### 6.2 타임테이블
+- Now/Next 표시, 진행 바
+- 슬롯(아티스트 무대)에서 아티스트 정보/리뷰/영상으로 연결
+- ⭐ "보고 싶은 슬롯" 체크(개인 계획)
+
+#### 6.2.1 나만의 타임테이블 (My Timetable)
+
+> **목적**: 페스티벌처럼 다중 스테이지/슬롯이 있는 행사에서 **나만의 동선 계획**을 만들고, 친구와 공유/비교할 수 있게 한다.
+
+**핵심 기능 (P1)**
+
+1. **슬롯 ⭐체크 → 자동 생성**
+   - 타임테이블에서 ⭐체크한 슬롯들이 "나만의 타임테이블"에 자동 반영
+   - 시간순 정렬, 스테이지별 색상 구분
+
+2. **커스텀 이벤트 추가**
+   - 밥/휴식/이동/만남 등 **개인 일정** 추가 가능
+   - 입력 필드: 제목, 시작/종료 시간, 메모(선택)
+   - 예시: "12:00-13:00 점심 (푸드트럭)", "15:30-16:00 A게이트에서 친구 만남"
+
+3. **시간 충돌 경고**
+   - 동일 시간대에 여러 슬롯/이벤트가 겹치면 **충돌 표시**(노란색 하이라이트)
+   - "충돌 N개" 배지로 한눈에 파악
+
+4. **뷰 모드**
+   - 타임라인 뷰(시간순 리스트)
+   - 그리드 뷰(시간 × 스테이지 매트릭스) — P2
+
+**친구 공유/비교 (P1)**
+
+1. **타임테이블 공유**
+   - "공유 링크 생성" → 읽기 전용 링크 복사
+   - 링크 접속 시 "OOO의 타임테이블" 뷰
+
+2. **오버레이 비교**
+   - "친구 타임테이블 추가" → 링크 입력 또는 친구 검색
+   - 내 일정 + 친구 일정 **겹쳐보기** (색상으로 구분)
+   - **함께 보는 슬롯** 하이라이트 (겹치는 ⭐슬롯)
+   - **따로 보는 슬롯** 표시 (각자만 체크한 슬롯)
+
+3. **동행 조율 UX**
+   - 친구와 겹치는 슬롯 확인 → "같이 볼까요?" 동행 제안
+   - 빈 시간대 확인 → "이 시간에 밥 먹을까요?" 제안
+
+**데이터 저장**
+- MVP: **localStorage** (로그인 시 userId별 분리)
+- 향후: Supabase에 저장 + 실시간 동기화
+
+**비목표(MVP)**
+- 실시간 협업 편집 (동시 수정)
+- ICS 캘린더 내보내기 (P2)
+- 푸시 알림 연동 (P2, slot_start_reminder와 통합)
+
+### 6.3 리뷰/영상 (행사 허브 내 글 타입)
+- **행사 총평 리뷰**: 행사 자체 별점 + 텍스트
+- **아티스트 리뷰**: “아티스트 일반”이 아니라 **이 행사에서의 슬롯(무대) 귀속** 별점 + 텍스트
+- 영상: MVP는 **외부 링크 공유 + 미리보기**(선택적으로 슬롯/아티스트 연결)
+
+### 6.4 커뮤니티(카테고리)
+- 동행(일반) / 택시팟 / 밥 / 숙소 / 직거래양도 / 후기·팁 / 질문
+- 템플릿 필드(시간/장소/인원/예산/규칙/연락 방식), 자동 만료(카테고리별)
+
+#### 6.4.1 장소 필드 & 지도 보기(Deep Link) (MVP)
+**목적**: 티켓양도/뒷풀이/택시팟처럼 “정확한 만남 장소”가 필요한 글에서, **지도 SDK 없이** 빠르게 길찾기를 제공한다.
+
+- 입력(글쓰기 / PostComposer)
+  - `place_text` (선택): 사용자가 자유 텍스트로 입력 (예: “올림픽공원 정문”, “KSPO DOME 3번 게이트”)
+  - (선택) `place_hint`: 더 정확하게 검색되도록 보조 키워드 (예: “서울 송파구”)
+- 노출(글 카드 / PostCard)
+  - 장소가 있으면 **[📍 지도 보기]** 버튼 노출 (텍스트는 카드에 그대로 표시)
+  - 만료(EXPIRED/CLOSED) 상태여도 “읽기”는 가능하므로 지도 보기는 유지(연락 CTA만 비활성)
+- 동작(딥링크)
+  - 기본 전략: **지도 앱 검색 화면으로 이동**(정확한 핀/좌표는 MVP에서 다루지 않음)
+  - 제공 옵션(권장): **Google Maps(유니버설 URL)** + (선택) Naver Map / Kakao Map
+  - 앱 미설치/실행 실패 시: **웹(브라우저)로 대체** 또는 “설치 안내”로 안전하게 처리
+- 비목표(명확히)
+  - 내장 지도(SDK) 렌더링, 위경도 지오코딩/역지오코딩, 장소 DB(Place ID) 정규화
+  - 앱 내 길찾기/내비게이션(모든 라우팅은 지도 앱에 위임)
+- 데이터/개인정보
+  - MVP는 사용자의 현재 위치/좌표를 수집하지 않는다(텍스트 장소만 저장)
+
+#### 6.4.2 추천 UX (MVP)
+- [📍 지도 보기] 탭 시 "어떤 지도로 열까요?" 액션시트(네이버/카카오/구글/웹) 제공
+- 한 번 선택한 지도 앱은 "기본값"으로 저장(설정에서 변경 가능)
+
+#### 6.4.3 내 참여 관리 (My Participation)
+
+> **목적**: 커뮤니티 글(동행/택시/밥/숙소/양도)에 대한 **참여 신청**과 **수락된 활동**을 통합 관리하고, 활동 시간이 다가오면 **리마인더 알림** 제공.
+
+##### 1) 참여 신청 시스템 (P1 — ✅ 완료)
+- **받은 신청**: 내 글에 들어온 참여 신청 목록
+  - 신청자 정보 (닉네임, 아바타, 메시지)
+  - 신청 시각, 글 타입 (동행/택시/밥/숙소/양도)
+  - 수락/거절 버튼
+- **보낸 신청**: 내가 다른 글에 보낸 참여 신청 목록
+  - 글 작성자 정보
+  - 신청 상태 (대기 중/수락됨/거절됨/취소됨)
+  - 대기 중인 경우 취소 버튼
+- **대기 중 배지**: 내 참여 버튼에 대기 중인 신청 개수 표시
+
+##### 2) 참여 중인 활동 관리 (P1 — 기획 중)
+- **"참여 중" 탭**: 수락된 활동만 표시
+  - 날짜순 정렬 (가까운 일정 우선)
+  - 활동 타입별 아이콘 (🚕 택시/🍚 밥/🏠 숙소/🎫 양도/👫 동행)
+  - 활동 상태 (예정/진행중/완료)
+- **원글 바로가기**: 클릭 시 해당 커뮤니티 글 상세로 이동
+- **작성자 프로필 링크**: 글 작성자 프로필 페이지로 이동
+
+##### 3) 참여 활동 알림 (P1 — 기획 중)
+| 알림 타입 | 트리거 | 예시 메시지 |
+|----------|--------|-------------|
+| `participation_reminder_1d` | 활동 24시간 전 | "내일 18:00 택시팟이 있어요! 🚕" |
+| `participation_reminder_1h` | 활동 1시간 전 | "1시간 후 밥약이 시작돼요! 🍚" |
+| `participation_accepted` | 신청 수락됨 | "택시마스터님이 참여를 수락했어요!" |
+| `participation_declined` | 신청 거절됨 | "아쉽게도 신청이 거절되었어요" |
+| `participation_canceled` | 활동 취소됨 | "택시팟이 취소되었어요" |
+| `participation_changed` | 일정/장소 변경 | "밥약 시간이 19:30 → 20:00으로 변경됐어요" |
+
+##### 4) 관리 위치
+| 기능 | 위치 | 설명 |
+|------|------|------|
+| 1:1 동행 제안 | `/profile` 동행 탭 | 친구 활동에서 "같이 갈래요?" 제안 (CompanionContext) |
+| 글 기반 참여 | `/community` 내 참여 모달 | 커뮤니티 글 참여 신청 관리 (ParticipationContext) |
+| 참여 알림 | `/notifications` | 통합 알림 시스템과 연동 |
+
+##### 5) 데이터 (ParticipationRequest)
+```typescript
+interface ParticipationRequest {
+  id: string;
+  applicantId: string;      // 신청자
+  postId: string;           // 글 ID
+  postAuthorId: string;     // 글 작성자
+  message?: string;         // 신청 메시지
+  status: 'pending' | 'accepted' | 'declined' | 'canceled';
+  scheduledAt?: Date;       // 활동 예정 시간 (Phase 2)
+  createdAt: Date;
+  respondedAt?: Date;       // 수락/거절 시각
+}
+```
+
+### 6.5 실시간 제보(UGC)
+- 템플릿: 게이트/MD/시설/안전
+- 요약: 최신 업데이트 시각 + 신뢰도(A/B/C) 표기
+- (MVP) 신뢰도는 **증빙(사진)·최근성·작성자 평판** 등으로 단순화
+
+### 6.6 공식안내(링크 기반)
+- Official 공지는 운영자가 **링크/텍스트**로 등록
+- 인스타는 **URL 공유 + 미리보기(oEmbed 가능 범위)** 중심
+
+### 6.7 알림(Notifications) — 이벤트 정의 (MVP 기준)
+
+> 채널: **인앱 알림함(기본)** + 사용자 동의 시 **푸시 알림(선택)**  
+> 공통 원칙: 중복 방지(묶음), 조용한 시간(Quiet Hours), 이벤트별 옵트인/옵트아웃.
+
+#### 1) 리마인더(사용자 스케줄 기반)
+- **ticket_open_reminder**: 사용자가 ⭐찜한 행사에 `예매 오픈 시각 - N분` 리마인드
+- **event_start_reminder**: ⭐찜 또는 ✅다녀옴(다일 행사 시 “오늘 회차”) 기준 `start_at - N시간`
+- **slot_start_reminder** *(P1 권장)*: 사용자가 ⭐ “보고 싶은 슬롯” 체크한 슬롯 시작 N분 전
+
+#### 2) 행사 허브 업데이트(콘텐츠 기반)
+- **official_notice_published**: 행사에 새 Official 공지 등록(핀/긴급 옵션 포함)
+- **live_report_trending** *(P1 권장)*: 내가 ⭐찜/✅다녀옴한 행사에서 “도움됨” 반응이 빠르게 증가한 제보 발생
+- **hub_post_replied**: 내 허브 글(제보/후기/영상)에 댓글/답글 달림
+
+#### 3) 커뮤니티 상호작용(커뮤니티 탭)
+- **community_post_replied**: 내 커뮤니티 글에 댓글/답글 달림
+- **community_post_matched** *(P1 권장)*: 내가 구독한 행사/카테고리에 새 모집글 등록(예: 택시팟)
+
+#### 3.5) 참여 활동 알림(커뮤니티 글 참여) *(P1 권장)*
+- **participation_accepted**: 내 참여 신청이 수락됨
+- **participation_declined**: 내 참여 신청이 거절됨
+- **participation_reminder_1d**: 참여한 활동 24시간 전 리마인더
+- **participation_reminder_1h**: 참여한 활동 1시간 전 리마인더
+- **participation_canceled**: 참여한 활동이 취소됨
+- **participation_changed**: 참여한 활동의 일정/장소가 변경됨
+- **participation_received**: 내 글에 새 참여 신청이 들어옴
+
+#### 4) 만료/안전(정책·가드레일)
+- **post_expiring_soon**: 내 모집글이 `expires_at - 2시간`에 EXPIRING 진입(옵트인)
+- **post_expired**: 내 모집글이 EXPIRED로 전환(로그성, 인앱)
+- **report_result** *(P2)*: 신고 처리 결과 안내(정책/모더레이션 고도화 이후)
+
+#### 5) 시스템(데이터 변경)
+- **event_time_changed**: 운영자가 행사 start/end 또는 타임테이블을 수정했을 때(⭐찜/✅다녀옴 사용자 대상)
+- **event_cancelled**: 행사 취소/중단 공지(긴급)
+
+#### 6) 알림 데이터(권장 payload)
+- `notification_id`, `type`, `created_at`
+- 대상: `event_id`, `post_id`, `comment_id`, `slot_id`(선택)
+- 표시용: `title`, `body`, `deep_link`
+- 제어: `dedupe_key`, `priority`, `channels(inapp/push)`
+
+---
+
+
+#### 6.7.1 알림 정책(대상/캡/중복 묶음) — MVP 기본값
+- Quiet Hours(기본): **22:00–08:00 (행사 로컬 타임존)**
+- 중복 묶음: 동일 `dedupe_key`는 최근 30분 내 1회만 노출(인앱), 푸시는 이벤트별 캡 적용
+
+| 이벤트 | 대상(수신자) | 기본 | 채널 | 푸시 | dedupe_key 예시 | 빈도 캡(권장) |
+|---|---|---|---|---|---|---|
+| ticket_open_reminder | ⭐찜한 사용자 | ON | 인앱+푸시(동의 시) | 선택 | `ticket_open:{event_id}` | 행사당 1회 |
+| event_start_reminder | ⭐찜/✅다녀옴 | ON | 인앱+푸시(동의 시) | 선택 | `event_start:{event_id}:{yyyy-mm-dd}` | 1일 1회 |
+| official_notice_published | ⭐찜/✅다녀옴(행사 구독) | ON | 인앱+푸시(긴급 옵션) | 선택 | `official:{event_id}:{notice_id}` | 1일 5회 |
+| hub_post_replied | 내가 쓴 글 작성자 | ON | 인앱 | 선택 | `reply:{post_id}:{thread_id}` | 1시간 10회 |
+| community_post_replied | 내 커뮤니티 글 작성자 | ON | 인앱 | 선택 | `c_reply:{post_id}:{thread_id}` | 1시간 10회 |
+| post_expiring_soon | 내 모집글 작성자 | OFF(옵트인) | 인앱 | 선택 | `expiring:{post_id}` | 글당 1회 |
+| event_time_changed | ⭐찜/✅다녀옴 | ON | 인앱 | 선택 | `time_change:{event_id}:{revision}` | 변경당 1회 |
+| event_cancelled | ⭐찜/✅다녀옴 | ON | 인앱+푸시(긴급) | 선택 | `cancel:{event_id}:{revision}` | 변경당 1회 |
+| participation_received | 내 글 작성자 | ON | 인앱 | 선택 | `part_recv:{post_id}:{applicant_id}` | 건당 1회 |
+| participation_accepted | 신청자 | ON | 인앱+푸시(동의 시) | 선택 | `part_accept:{request_id}` | 건당 1회 |
+| participation_declined | 신청자 | ON | 인앱 | OFF | `part_decline:{request_id}` | 건당 1회 |
+| participation_reminder_1d | 참여자 | ON | 인앱+푸시(동의 시) | 선택 | `part_remind_1d:{request_id}` | 건당 1회 |
+| participation_reminder_1h | 참여자 | ON | 인앱+푸시(동의 시) | 선택 | `part_remind_1h:{request_id}` | 건당 1회 |
+| participation_canceled | 참여자 | ON | 인앱+푸시(동의 시) | 선택 | `part_cancel:{request_id}` | 건당 1회 |
+| participation_changed | 참여자 | ON | 인앱+푸시(동의 시) | 선택 | `part_change:{request_id}:{revision}` | 변경당 1회 |
+
+*비고*: 푸시는 사용자 동의 + OS 권한 허용 시에만 발송. 인앱 알림함은 항상 기록.
+
+### 6.8 피드 정렬/랭킹 정책 (MVP)
+#### 6.8.1 허브 피드(행사 탭: LIVE/RECAP 공통)
+- 공통: **핀(Pin)된 Official 공지/운영자 공지**는 최상단 고정
+- 정렬 옵션(사용자 선택): `최신` / `도움됨`
+- 기본값:
+  - **LIVE 기본 = 최신**: `sort_at = max(updated_at, created_at)` 내림차순, 동률 시 `helpful_count` 우선
+  - **RECAP 기본 = 도움됨**: `helpful_count` 내림차순, 동률 시 `rating(있다면)` → `created_at` 순
+- 페널티(노출 하향): 신고 누적/차단된 작성자/삭제(숨김) 처리된 글
+
+#### 6.8.2 커뮤니티 리스트(동행/택시/밥/숙소/양도)
+- 기본: **ACTIVE** 상태만 기본 노출(만료/종료는 탭 전환 또는 필터로 보기)
+- 기본 정렬: 카테고리별 `time_key` 오름차순(가까운 약속 우선) → 동률 시 `created_at` 최신
+  - 택시팟: `depart_at`
+  - 밥: `meet_at`
+  - 동행(일반): `meet_at` 또는 `start_at`
+  - 양도: `created_at` 최신(시간 키가 없으므로)
+- 보조 정렬 옵션: `최신` / `마감 임박`(expires_at 가까운 순)
+
+### 6.9 탐색/검색/필터 & 태그/카테고리 (MVP)
+#### 6.9.1 탐색(행사) 필터
+- 최소 필터: 지역(시/구), 기간(오늘/이번주/이번달/직접 선택), 장르(공연/전시/페스티벌), 유/무료
+- 정렬: `가까운 날짜`(기본) / `최신 등록`(보조)
+
+#### 6.9.2 통합 검색
+- 검색 대상: 행사 / 아티스트 / 허브 글 / 커뮤니티 글
+- 결과는 탭 또는 섹션으로 분리(행사 우선 노출)
+
+#### 6.9.3 택소노미(초기 사전)
+- 행사 장르: 공연/전시/페스티벌(최소) + 확장 태그(예: 힙합/록/EDM 등)
+- 글 타입(Post Type): 게이트/MD/시설/안전/공식/동행/양도/후기/영상/질문·팁
+
+### 6.10 Dev 메뉴(디버그/테스트) 요구사항 (MVP P0)
+- 목적: **목업/시드 데이터**로 “되는 것처럼” UI/UX를 검증하고, 상태 전환/알림/만료를 **재현 가능**하게 만든다.
+- 적용 범위: **디버그 빌드 전용**(프로덕션에서는 숨김)
+- 기능 요구사항
+  1) 시나리오 데이터셋 전환(Scenario A~F)
+  2) 시간 시뮬레이터(now 설정, +1h/+6h/+1d, 리셋)
+  3) 행사 상태/모드 토글  
+     - `event.status`: SCHEDULED/CHANGED/POSTPONED/CANCELED  
+     - `override_mode`: AUTO/LIVE/RECAP
+  4) 커뮤니티 만료 트리거  
+     - `expires_at` 조정, 상태(ACTIVE/EXPIRING/EXPIRED/CLOSED) 강제 전환
+  5) 알림 트리거(샘플 생성)  
+     - 예매 리마인더 / 댓글 / Official 공지 / 만료 임박  
+     - 알림 클릭 시 딥링크 라우팅 검증
+  6) 세션/권한 토글(테스트용)  
+     - 로그아웃/유저1/유저2, 차단 상태 토글
+
+### 6.10.1 운영자 도구(Admin) 요구사항 (Future / Out of Scope for MVP UI)
+- 목적: 자동 수집 데이터의 **승인/수정**, 허브 품질 관리, 신고 처리
+- 필수 기능:
+  1) 행사 관리: 행사 생성/수정, 상태(예정/연기/취소) 변경, 타임존/기간(start/end) 수정
+  2) 소스/변경 제안 검수: 수집된 공지/변경 감지 → 승인/반려(로그 남김)
+  3) Official 공지: 등록/핀/긴급 표시(알림 연동)
+  4) 모드 override: `override_mode(LIVE/RECAP/AUTO)` 설정
+  5) 모더레이션: 신고 큐, 글 숨김/복구, 사용자 경고/차단(최소)
+  6) 감사로그(Audit log): 운영자 액션 기록(누가/언제/무엇을)
+
+
+### 6.11 행사 데이터 수집 & 변경 관리 (MVP)
+- (MVP) 수집 파이프라인은 붙이지 않고 **목업/시드 데이터**로만 제공한다(상태/시간/알림은 Dev 메뉴로 시뮬레이션).
+- 상세 설계(커넥터/추출/정규화/모니터링): `docs/tech/ingestion_crawling.md` 참조.
+- (Future) 아래 수집/변경 관리 워크플로우를 연결한다.
+- 수집 소스: **예매처/주관사 최신 공지(웹)** + **SNS(인스타/트위터 등) 공지 링크**
+- 수집 방식: 주기적 폴링(기본) + 행사 임박 시 빈도 상승(권장)
+  - 기본: 6시간 간격
+  - D-7 ~ D-1: 3시간 간격
+  - LIVE 윈도우(start-24h ~ end+6h): 30분 간격
+- 파이프라인(권장 모델):
+  1) `raw_source_item`(원문/URL/수집시각) 적재
+  2) 파싱/정규화(날짜/가격/장소/타임테이블)
+  3) `change_suggestion` 생성(변경된 필드 diff)
+  4) 운영자 승인 시 `event` 반영 + 관련 알림(`event_time_changed`, `event_cancelled` 등)
+- 충돌 처리: 운영자 수동 수정값이 있을 경우 해당 필드는 **잠금(locked)** 하여 자동 덮어쓰기 방지(P1 고도화)
+
+### 6.12 목업/시드 데이터 시나리오 세트 (MVP)
+> 목적: “실제 데이터 연동 없이도” 핵심 UX(상태/정렬/빈상태/알림/만료)를 QA 가능하게 만든다.
+
+- **Scenario A — 기본(단일일정, 예정)**: start/end/장소/가격/타임테이블 완비, 커뮤니티 ACTIVE
+- **Scenario B — 다일(multi-day) 페스티벌**: 2일 이상, Day별 타임테이블/라인업, MyFes 타임라인 확인
+- **Scenario C — 종료 시각 누락(엣지)**: end_at 없음 → UI는 “종료 미정” 처리, 모드 자동 전환은 보수적 기본값 + 안내 배지
+- **Scenario D — 취소(CANCELED)**: 상단 경고 배너, CTA 비활성, 기존 알림/리마인더 처리 확인
+- **Scenario E — 연기/일정 변경(POSTPONED/CHANGED)**: 기존 날짜 표기 + 변경 배지, 알림(변경 공지) 샘플
+- **Scenario F — 타임존(해외 행사)**: 행사 로컬 타임존 기준 표시/전환, 사용자 로컬과 혼동 방지
+
+- 각 시나리오에 포함될 샘플 콘텐츠(권장 최소치)
+  - 허브 글 12개(글 타입 섞기: 게이트/MD/시설/안전/Official/후기/영상)
+  - 커뮤니티 글 8개(택시/밥/동행/질문, 만료 포함)
+  - 알림 10개(리마인더/댓글/Official/만료 임박 등)
+  - 사용자 2명(차단/신고 상태 포함)
+
+### 6.13 크루 (Crew) 기능 — 지속적 모임
+
+> **목적**: 같이 공연/페스티벌을 다니는 사람들이 **지속적인 관계**를 유지하고 함께 일정을 관리할 수 있게 한다.
+
+#### 6.13.1 크루란?
+- **번개 모집**(커뮤니티): 일회성, 특정 행사를 위한 익명/반익명 모집
+- **크루**: 지속적, 여러 행사를 함께 다니는 친밀한 그룹
+
+#### 6.13.2 크루 기능 (P1)
+
+**크루 생성/관리**
+- 크루 생성: 이름, 설명, 공개/비공개, 가입 조건(승인제/자유), 최대 인원
+- 크루 프로필: 로고/배너, 함께 다녀온 행사 수, 멤버 수
+- 역할: 크루장(관리자), 멤버
+- 크루 해체/탈퇴
+
+**크루 발견 (커뮤니티 탭 내)**
+- 크루 찾기: 지역/장르별 필터, 추천 크루
+- 크루 가입 신청 → 승인/거절 (승인제인 경우)
+
+**크루 활동 (MyFes 탭 내)**
+- 크루 피드: 멤버들의 활동 (⭐찜, ✅다녀옴, 후기)
+- 크루 캘린더: 멤버들이 찜한 행사 통합 뷰
+- 함께 보기: 크루원 타임테이블 오버레이 비교 (나만의 타임테이블 연동)
+
+**크루 알림**
+- 크루원이 행사를 찜하면 알림 (옵션)
+- 크루장 공지
+
+#### 6.13.3 데이터 모델 (참고)
+```sql
+crews (id, name, description, is_public, join_type, max_members, created_by, created_at)
+crew_members (crew_id, user_id, role, joined_at)
+crew_events (crew_id, event_id, added_by, added_at)  -- 크루 공동 관심 행사
+```
+
+### 6.14 친구/팔로우 & 소셜 피드 (P1)
+
+> **목적**: 친구의 활동을 보고 함께 공연을 다닐 동기를 부여한다.
+
+#### 6.14.1 친구/팔로우
+- 팔로우 모델: 일방향 팔로우 (인스타그램 스타일)
+- 맞팔로우 시 "친구" 표시
+- 친구 찾기: 연락처 동기화(옵션), 검색, 추천
+
+#### 6.14.2 소셜 피드 (홈 탭 내)
+- 친구 활동: 친구가 ⭐찜한 행사, ✅다녀온 행사, 후기/영상
+- "같이 갈래요?" CTA: 친구가 찜한 행사에 관심 표시
+- FOMO 루프: 친구가 다녀온 행사 하이라이트
+
+#### 6.14.3 공유 기능
+- 나만의 타임테이블 공유 (읽기 전용 링크)
+- 공연로그 공유 (연간 리포트 등)
+- 배지/결산 공유
+
+### 6.15 리더보드 & 랭킹 시스템 (P1)
+
+> **목적**: 커뮤니티 기여자를 인정하고, 건강한 참여 동기를 부여한다.
+
+#### 6.15.1 점수 체계
+| 활동 | 기본 점수 | 가중치 |
+|------|-----------|--------|
+| 도움된 후기 | 10점 | × 윌슨 스코어 × 최근성 |
+| 현장 제보 | 5점 | × 검증률 × 최근성 |
+| 질문 답변 | 3점 | × 도움됨 수 × 최근성 |
+| 신규 행사 제보 | 20점 | 검증 완료 시 |
+
+- **윌슨 스코어**: 업/다운보트 비율과 총 투표 수를 고려한 신뢰도 점수
+- **최근성 가중치**: `decay_factor = 0.95 ^ (days_ago / 7)`
+
+#### 6.15.2 리더보드 UI
+- 홈 탭: 리더보드 미리보기 (Top 5)
+- 전체 리더보드 페이지: 주간/월간/시즌별 랭킹
+- 시즌제: 연도별 리셋 (예: 2025 시즌)
+
+#### 6.15.3 어뷰징 방지
+- 자기 글에 자기 반응 불가
+- 단기간 대량 활동 감지 시 점수 보류
+- 신고 누적 시 점수 차감
+
+### 6.16 공연로그 & 배지 시스템 (P1)
+
+> **목적**: 자신의 공연 이력을 기록하고 자랑할 수 있게 한다.
+
+#### 6.16.1 공연로그 (GongLog)
+- **타임라인**: 다녀온 행사 연대기 (사진/메모 첨부)
+- **통계 대시보드**:
+  - 연간/월간 관람 횟수
+  - 장르별 분포 (파이 차트)
+  - 지역별 분포 (지도)
+  - 아티스트별 관람 횟수
+  - 동행 횟수 (크루/친구별)
+- **나의 티켓북** (P2): 티켓 사진 등록 → AI 편집(개인정보 마스킹) → 티켓 컬렉션
+
+#### 6.16.2 배지 시스템
+| 배지 유형 | 예시 |
+|----------|------|
+| 출석 배지 | 첫 공연, 10회, 50회, 100회 |
+| 장르 배지 | 록 마스터, 힙합 러버, 인디 탐험가 |
+| 지역 배지 | 서울 정복, 전국 투어러 |
+| 시즌 배지 | 2025 페스티벌러, 연말결산 |
+| 기여 배지 | 도움왕, 제보왕, 질문 해결사 |
+
+#### 6.16.3 연말 결산 리포트 (P2)
+- "2025 나의 공연 리포트" 자동 생성
+- 공유 이미지 생성 (인스타 스토리/카카오톡)
+- 통계: 총 관람 수, 최다 장르, 최다 아티스트, 총 이동 거리 등
+
+### 6.20 사용자 콘텐츠 등록 (P2)
+> 상세 기획: `docs/proposals/user-event-registration.md`
+
+#### 6.20.1 사용자 행사 등록
+- **목적**: 작은 공연, 지역 행사, 비공식 이벤트 등 데이터 커버리지 확대
+- **등록 폼**: 제목, 시작일시, 장소, 행사 유형(필수) + 종료일시, 포스터, 출연진, 가격, 예매 링크(선택)
+- **검증**: 중복 행사 감지, 스팸 방지(신규 계정 제한)
+- **상태**: `draft` → `pending` → `published` / `rejected`
+
+#### 6.20.2 타임테이블 편집
+- **목적**: 공식 사이트 업데이트 반영, 커뮤니티 협업 편집
+- **편집 권한**:
+  - 등록자/신뢰 사용자: 즉시 수정 가능
+  - 일반 사용자: 수정 제안 → 승인 필요
+- **기능**: 슬롯 추가/수정/삭제, 스테이지 관리, 운영 슬롯(오프닝/휴식 등)
+- **히스토리**: 변경 이력 기록, 기여자 표시
+
+#### 6.20.3 셋리스트 편집
+- **목적**: 공연 셋리스트 기록 및 공유
+- **데이터**: 곡 순서, 곡명, 앵콜 여부, 특이사항(어쿠스틱/콜라보 등)
+- **연동**: 콜가이드 링크, 도움됨 버튼
+- **권한**: 로그인 사용자 작성/수정, 다녀옴 사용자 우선
+
+#### 6.20.4 품질 관리
+- **신뢰도 시스템**: 기여 포인트 (행사 등록 10점, 타임테이블 편집 5점, 셋리스트 3점)
+- **배지 연동**: 기여자 배지 (첫 등록, 10회 편집 등)
+- **신고/숨김**: 부정확 정보 신고, 롤백 기능
+
+---
+
+## 7. 비기능 요구사항
+- 성능: 허브 진입 시 상단 요약 4박스가 빠르게 보일 것(스켈레톤/캐시)
+- 오프라인/불안정 네트워크: 작성 중 임시 저장(선택), 업로드 실패 재시도 UX
+- 접근성: 주요 터치 타깃, 대비, 스포일러 토글 등
+
+---
+
+## 8. 안전/정책(최소)
+> 전제: 결제/에스크로/거래 중개 없음. 대신 **최소 안전장치 + 모더레이션**으로 위험을 낮춘다.
+
+### 8.1 신고(Report)
+- 진입: 글/댓글의 `⋯` 메뉴 → 신고
+- 신고 사유(초기): 스팸/광고, 사기/거래 유도, 욕설/혐오, 성희롱, 개인정보 노출, 불법/위험 행위, 기타
+- 처리 상태: `RECEIVED → IN_REVIEW → ACTION_TAKEN/NO_ACTION` (MVP는 내부 큐 기반)
+
+### 8.2 자동 숨김/블러(가드레일)
+- 기준(권장): 서로 다른 사용자로부터 신고가 누적되면 임시 숨김/블러 처리(예: 3회)
+- 임시 숨김 시 UI: “신고가 접수되어 검토 중입니다” + ‘보기’(사용자 선택) + ‘차단’ CTA
+
+### 8.3 차단(Block)
+- 차단 시 효과:
+  - 서로의 글/댓글/프로필이 상호 숨김
+  - 알림/댓글 멘션 등 상호 상호작용 차단
+
+### 8.4 레이트리밋/스팸 방지(최소)
+- 신규 계정: 글/댓글 빈도 제한(예: 10분 내 3개 초과 시 쿨다운)
+- 동일 내용 반복/외부 링크 과다 포함 시 경고 후 제한
+
+### 8.5 거래/만남 안전 고지
+- 양도/동행 카테고리 작성 시 경고 문구(면책):
+  - 개인정보/연락처 공개 주의, 심야 단독 만남 주의, 금전 거래는 플랫폼 외부 책임
+- 연락 방식: 외부 연락처 직접 노출을 최소화(초기엔 가이드라인 + 마스킹 중심)
+
+### 8.6 콘텐츠 권리
+- 영상/이미지: 저작권/초상권 안내(초기엔 링크 공유 중심)
+
+---
+## 9. 성공 지표 (Metrics)
+### 9.1 북극성(제안)
+- 행사 단위: `허브에서 발생한 유효 행동 수`(제보/리뷰/영상/동행 참여/타임테이블 체크)
+
+### 9.2 핵심 KPI
+- 허브 진입→제보/커뮤니티 행동 전환율
+- RECAP 조회율(지난 행사에서 RECAP 진입)
+- ✅다녀옴 전환율, 리뷰 작성률(총평/슬롯)
+- 탐색(캘린더)에서 대표 카드 클릭률
+
+### 9.3 데이터 이벤트(발췌)
+- view_explore, switch_view(card/list/calendar), select_calendar_date
+- view_event, toggle_wishlist, toggle_attended
+- view_hub, submit_post(type), vote_helpful
+- view_recap, submit_review(event/slot), add_video_link
+
+---
+
+## 10. 릴리즈 범위 제안 (MVP → 이후)
+### 10.1 MVP 우선순위 (P0/P1/P2)
+
+> 원칙: **Top 3 Journeys**(탐색→LIVE, 종료→RECAP, MyFes 관리)를 막지 않는 것을 P0로 둔다.
+
+| 영역 | 기능 | P | 비고 |
+|---|---|---:|---|
+| Dev/테스트 | Dev 메뉴(시나리오/시간/상태/알림 트리거) | P0 | 디버그 빌드 전용 |
+| 운영(내부) | Admin 도구(수집 승인/행사 편집/신고 큐/감사로그) | P2 | MVP UI/UX 검증 이후 |
+| 탐색 | 카드/리스트/캘린더 3뷰 + 필터/정렬 | P0 | 캘린더 대표 카드 1장 규칙 포함 |
+| 탐색 | 지난 행사(최근 12~24개월) 탐색 + RECAP 기본 진입 | P0 |  |
+| 행사 | `/event/{id}` 단일 라우트 + 탭(개요/허브/타임테이블/아티스트) | P0 |  |
+| 행사 | (선택, P2) 후기·영상 탭(허브 후기/영상 필터 뷰) | P2 | 초기엔 허브 피드 필터로 대체 |
+| 허브 | 상단 4박스 요약 + 피드(글 타입 필터) | P0 |  |
+| 허브 | LIVE/RECAP 기본 모드 자동 전환(규칙 확정) | P0 | 운영자 override 포함 |
+| 작성 | 글 타입 템플릿 작성(실시간/커뮤니티/후기/영상 링크) | P0 | 최소 필수 필드로 시작 |
+| 상태 | ⭐찜 / ✅다녀옴 + 3곳 노출(행사/탐색/MyFes) | P0 |  |
+| MyFes | 예정+지난 혼합 타임라인 + “오늘 앵커” | P0 |  |
+| 커뮤니티 | 카테고리(동행/택시/밥/숙소/양도/후기·팁/질문) + 이벤트 필터 | P0 |  |
+| 커뮤니티 | 자동 만료(카테고리별) + 모집완료(CLOSED) | P0 | UX/IA 로직 참조 |
+| 알림 | 인앱 알림함 + 핵심 알림(댓글/공지/리마인더 일부) | P0 | 푸시는 옵션(동의) |
+| 안전 | 신고/차단/연락처 마스킹(가이드라인) | P0 | 결제 기능 없음 전제 |
+| 품질 | 도움됨(Helpful) 반응 + 기본 정렬(최신/도움됨) | P1 | RECAP에서 도움됨 우선 권장 |
+| 품질 | 신뢰도(A/B/C) 규칙 고도화(사진/작성자 신호) | P1 |  |
+| 알림 | 슬롯 시작 알림, 트렌딩 제보 알림, 매칭 알림 | P1 | 사용자 설정과 함께 |
+| 작성 | 오프라인/임시저장(드래프트) | P1 |  |
+| 데이터 | 추천/대표 카드 선정 고도화(팔로우/인기 tie-break) | P1 |  |
+| 타임테이블 | 나만의 타임테이블 (슬롯 체크 + 커스텀 이벤트) | P1 | 밥/휴식/이동 등 개인 일정 |
+| 타임테이블 | 친구 타임테이블 공유/오버레이 비교 | P1 |  |
+| 크루 | 크루 생성/관리, 크루 찾기 | P1 | 커뮤니티/MyFes 확장 |
+| 크루 | 크루 캘린더, 함께 보기 | P1 |  |
+| 소셜 | 친구/팔로우, 소셜 피드 | P1 | 홈 탭 확장 |
+| 소셜 | "같이 갈래요?" CTA, FOMO 루프 | P1 |  |
+| 랭킹 | 리더보드 (홈 미리보기 + 전체 페이지) | P1 | 시즌제 |
+| 공연로그 | 통계 대시보드 (장르/지역/아티스트별) | P1 | MyFes 확장 |
+| 배지 | 배지 시스템 (출석/장르/지역/기여) | P1 |  |
+| 콘텐츠 | 인앱 영상 업로드/편집 | P2 | 초기엔 외부 링크 공유 |
+| 운영 | 모더레이션 자동화/스팸 탐지 | P2 |  |
+| B2B | 주최/부스 콘솔, 공식 데이터 연동 | P2 |  |
+| 티켓북 | 나의 티켓북 (티켓 사진 등록/컬렉션) | P2 | AI 마스킹 |
+| 결산 | 연말 결산 리포트 + 공유 이미지 | P2 |  |
+| UGC | 사용자 행사 등록 | P2 | 행사 정보 커버리지 확대 |
+| UGC | 타임테이블 편집 (수정 제안 시스템) | P2 | 위키 스타일 협업 |
+| UGC | 셋리스트 편집 | P2 | 콜가이드 연동 |
+
+### MVP
+- 탐색 3뷰 + 지난 행사(1~2년)
+- 행사 페이지 탭(개요/허브/타임테이블/아티스트)
+- 허브 4박스 + 피드 + 글 타입 템플릿
+- ⭐찜/✅다녀옴 + MyFes 오늘 앵커 타임라인
+- 총평/슬롯 리뷰 + 영상 링크 공유
+- 커뮤니티 카테고리 + 신고/차단/마스킹
+
+### 이후(Option)
+- 정교한 신뢰도/랭킹, 모더레이션 자동화
+- 주최/부스 B2B 콘솔 및 공식 데이터 연동
+- (선택) 제한적 업로드(짧은 클립) 및 고급 편집
+
+---
+
+## 11. 엣지 케이스 & 가드레일 (MVP)
+
+### 1) 행사 일정/데이터 품질
+- **종료 시각 누락**: `end_at`이 없으면 기본값(예: `start_at + 12시간` 또는 당일 23:59)으로 보정하고 운영자에게 수정 알림.
+- **다일 행사**: `end_at`은 마지막 날 종료로 저장(중간 일자별 종료가 있어도 이벤트 단위 모드는 전체 LIVE 유지).
+- **타임존 혼재**: 행사에 `timezone` 필드 필수(기본 Asia/Seoul). 클라이언트 표시/알림 예약 모두 이 값을 기준으로.
+- **연기/취소/시간 변경**: 운영자 `override_mode` + 시스템 알림(event_time_changed/event_cancelled)로 안내.
+
+### 2) LIVE/RECAP 전환 관련
+- **종료 직후 정보 수요**: 종료 후 6시간 LIVE 유지(버퍼). 이후 RECAP로 전환.
+- **수동 전환 필요 상황**: 일정 데이터가 틀리거나, 공연이 조기 종료/지연된 경우 운영자 override로 대응.
+- **사용자 혼란 방지**: RECAP에서도 “실시간 글”은 필터로 접근 가능(읽기 중심, 최신 정렬 옵션 제공).
+
+### 3) 커뮤니티/거래 안전
+- **모집 글이 계속 남아있는 문제**: 카테고리별 `expires_at` 기반 자동 만료 + CLOSED(모집완료) 지원.
+- **사기/연락처 노출**: 연락처 마스킹, 위험 키워드 경고, 신고/차단 플로우를 P0로 둔다.
+- **행사 미연결 글**: created_at 기반 TTL로 정리(특히 택시/밥 등).
+
+### 4) UGC(실시간 제보) 품질/스팸
+- **상충 제보**: 최신성/도움됨/증빙(사진) 신호로 요약 우선순위를 정하고, “업데이트 시각”을 명시.
+- **중복 업로드/도배**: 동일 사용자/동일 타입의 짧은 시간 연속 등록은 서버에서 rate limit(간단) + 클라 안내.
+
+### 5) 알림(Notifications)
+- **중복 푸시 폭탄**: dedupe_key로 묶음 처리(예: 동일 행사 공지 5건 → 1건 요약).
+- **조용한 시간**: 기본 22:00~08:00(로컬)에는 푸시 지연(인앱은 기록).
+- **과거 이벤트 알림 방지**: 알림 예약 시점에 start/end가 변경되면 재예약/취소 처리.
+
+### 6) 네트워크/작성 UX
+- **현장 네트워크 불안정**: 작성 중 임시저장(P1) 전이라도 “전송 재시도”와 실패 상태를 명확히 노출.
+- **중복 전송**: 클라이언트 재시도 시 idem-key(작성 세션 키)로 서버 중복 생성 방지.
