@@ -30,7 +30,7 @@
 | 상태관리 | ✅ 28개 Context | 대부분 Supabase 쿼리 연동 |
 | 백엔드 쿼리 | ✅ 27개 완료 | src/lib/supabase/queries/ |
 | 인증 | ✅ Google OAuth | 카카오는 사업자 인증 필요 |
-| DB 스키마 | ✅ 설계 완료 | 마이그레이션 파일 6개 |
+| DB 스키마 | ✅ 설계 완료 | 마이그레이션 파일 13개 |
 
 ---
 
@@ -46,7 +46,7 @@ src/
 │   └── mock-data.ts        # Mock 데이터
 └── types/                  # 타입 정의
 
-supabase/migrations/        # 6개 마이그레이션 파일
+supabase/migrations/        # 13개 마이그레이션 파일
 docs/                       # 문서 (TODO.md, PRD.md 등)
 e2e/                        # Playwright E2E 테스트
 ```
