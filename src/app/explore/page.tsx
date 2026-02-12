@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Search, Grid3X3, List, Calendar, X, ChevronDown, Loader2, Database, HardDrive, Plus } from "lucide-react";
 import { EventCard } from "@/components/events/EventCard";
 import { EventListItem } from "@/components/events/EventListItem";
@@ -44,8 +44,63 @@ export default function ExplorePage() {
     const [showLoginPrompt, setShowLoginPrompt] = useState(false);
     const [showRegistrationModal, setShowRegistrationModal] = useState(false);
 
-    // Supabase에서 이벤트 데이터 가져오기 (오류 시 Mock 폴백)
-    const { events: allEvents, isLoading, isFromSupabase } = useEvents();
+    const genreMap: Record<string, "concert" | "festival" | "musical" | "exhibition"> = {
+        "콘서트": "concert",
+        "페스티벌": "festival",
+        "뮤지컬": "musical",
+        "전시": "exhibition",
+    };
+
+    const serverFilterOptions = useMemo(() => {
+        const options: {
+            type?: "concert" | "festival" | "musical" | "exhibition";
+            search?: string;
+            from?: string;
+            to?: string;
+        } = {};
+
+        if (filters.genre && genreMap[filters.genre]) {
+            options.type = genreMap[filters.genre];
+        }
+
+        if (searchQuery && searchQuery.length >= 2) {
+            options.search = searchQuery;
+        }
+
+        const now = new Date();
+        if (filters.period) {
+            switch (filters.period) {
+                case "이번 주":
+                    options.from = now.toISOString();
+                    options.to = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+                    break;
+                case "이번 달":
+                    options.from = now.toISOString();
+                    options.to = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+                    break;
+                case "3개월 내":
+                    options.from = now.toISOString();
+                    options.to = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString();
+                    break;
+                case "지난 3개월":
+                    options.from = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
+                    options.to = now.toISOString();
+                    break;
+                case "지난 12개월":
+                    options.from = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString();
+                    options.to = now.toISOString();
+                    break;
+                case "지난 24개월":
+                    options.from = new Date(now.getTime() - 730 * 24 * 60 * 60 * 1000).toISOString();
+                    options.to = now.toISOString();
+                    break;
+            }
+        }
+
+        return options;
+    }, [filters.genre, filters.period, searchQuery]);
+
+    const { events: allEvents, isLoading, isFromSupabase } = useEvents(serverFilterOptions);
 
     // 찜/다녀옴 상태
     const { isWishlist, isAttended, toggleWishlist } = useWishlist();
@@ -86,13 +141,26 @@ export default function ExplorePage() {
     // 지난 행사 필터인지 확인 (RECAP 모드 링크용)
     const isPastEventFilter = filters.period?.includes("지난");
 
-    // 필터링 및 정렬된 이벤트
     const filteredEvents = useMemo(() => {
-        // 공식 행사와 사용자 등록 행사 병합
         let events = [...allEvents, ...userEvents];
 
-        // 검색
-        if (searchQuery) {
+        if (filters.region) {
+            events = events.filter((e) => {
+                const address = e.venue?.address || "";
+                const name = e.venue?.name || "";
+                return address.includes(filters.region!) || name.includes(filters.region!);
+            });
+        }
+
+        if (filters.freeOnly) {
+            events = events.filter((e) => {
+                if (!e.price) return false;
+                const price = e.price.toLowerCase();
+                return price === "무료" || price === "free" || price.includes("무료");
+            });
+        }
+
+        if (searchQuery && searchQuery.length >= 2) {
             const query = searchQuery.toLowerCase();
             events = events.filter(
                 (e) =>
@@ -102,36 +170,10 @@ export default function ExplorePage() {
             );
         }
 
-        // 지역 필터
-        if (filters.region) {
-            events = events.filter((e) => {
-                const address = e.venue?.address || "";
-                const name = e.venue?.name || "";
-                return address.includes(filters.region!) || name.includes(filters.region!);
-            });
-        }
-
-        // 장르 필터
         if (filters.genre) {
-            const genreMap: Record<string, string> = {
-                "콘서트": "concert",
-                "페스티벌": "festival",
-                "뮤지컬": "musical",
-                "전시": "exhibition",
-            };
             events = events.filter((e) => e.type === genreMap[filters.genre!]);
         }
 
-        // 무료 필터
-        if (filters.freeOnly) {
-            events = events.filter((e) => {
-                if (!e.price) return false;
-                const price = e.price.toLowerCase();
-                return price === "무료" || price === "free" || price.includes("무료");
-            });
-        }
-
-        // 기간 필터
         if (filters.period) {
             const now = new Date();
             events = events.filter((e) => {
@@ -185,7 +227,36 @@ export default function ExplorePage() {
         return events;
     }, [searchQuery, filters, sort, allEvents, userEvents]);
 
-    // 활성 필터 개수
+    const ITEMS_PER_PAGE = 20;
+    const [displayCount, setDisplayCount] = useState(ITEMS_PER_PAGE);
+    const loadMoreRef = useRef<HTMLDivElement>(null);
+
+    const displayedEvents = useMemo(() => {
+        return filteredEvents.slice(0, displayCount);
+    }, [filteredEvents, displayCount]);
+
+    const hasMore = displayCount < filteredEvents.length;
+
+    useEffect(() => {
+        setDisplayCount(ITEMS_PER_PAGE);
+    }, [filters, searchQuery, sort]);
+
+    useEffect(() => {
+        if (!loadMoreRef.current || !hasMore) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) {
+                    setDisplayCount((prev) => Math.min(prev + ITEMS_PER_PAGE, filteredEvents.length));
+                }
+            },
+            { threshold: 0.1 }
+        );
+
+        observer.observe(loadMoreRef.current);
+        return () => observer.disconnect();
+    }, [hasMore, filteredEvents.length]);
+
     const activeFilterCount = Object.values(filters).filter((v) => v !== null && v !== false).length;
 
     // 필터 초기화
@@ -376,7 +447,7 @@ export default function ExplorePage() {
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
                             <span className="text-sm text-muted-foreground">
-                                {isLoading ? "로딩 중..." : `${filteredEvents.length}개의 행사`}
+                                {isLoading ? "로딩 중..." : `${displayedEvents.length}/${filteredEvents.length}개의 행사`}
                             </span>
                             {/* 데이터 소스 표시 (Dev 확인용) */}
                             {!isLoading && (
@@ -416,10 +487,9 @@ export default function ExplorePage() {
                     </div>
                 )}
 
-                {/* 뷰 렌더링 */}
                 {!isLoading && view === "card" && (
                     <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-                        {filteredEvents.map((event) => (
+                        {displayedEvents.map((event) => (
                             <EventCard
                                 key={event.id}
                                 event={event}
@@ -434,7 +504,7 @@ export default function ExplorePage() {
 
                 {!isLoading && view === "list" && (
                     <div className="space-y-3">
-                        {filteredEvents.map((event) => (
+                        {displayedEvents.map((event) => (
                             <EventListItem
                                 key={event.id}
                                 event={event}
@@ -451,7 +521,12 @@ export default function ExplorePage() {
                     <EventCalendarView events={filteredEvents} />
                 )}
 
-                {/* 빈 상태 */}
+                {hasMore && view !== "calendar" && (
+                    <div ref={loadMoreRef} className="flex justify-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                )}
+
                 {!isLoading && filteredEvents.length === 0 && (
                     <div className="text-center py-12">
                         <p className="text-muted-foreground mb-4">

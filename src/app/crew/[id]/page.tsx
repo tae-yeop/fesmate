@@ -33,6 +33,9 @@ import Link from "next/link";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { CrewCalendar } from "@/components/crew/CrewCalendar";
+import { CrewHeatmap } from "@/components/crew/CrewHeatmap";
+import { CrewStats } from "@/components/crew/CrewStats";
+import { CrewSimilarMembers } from "@/components/crew/CrewSimilarMembers";
 
 /** 활동 타입별 아이콘 및 텍스트 */
 const ACTIVITY_CONFIG: Record<CrewActivityType, { icon: typeof Star; text: string; color: string }> = {
@@ -71,7 +74,7 @@ export default function CrewProfilePage() {
         toggleAnnouncementPin,
     } = useCrew();
 
-    const [activeTab, setActiveTab] = useState<"activity" | "members" | "events" | "calendar" | "manage">("activity");
+    const [activeTab, setActiveTab] = useState<"activity" | "members" | "events" | "calendar" | "stats" | "manage">("activity");
     const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
     const [showJoinModal, setShowJoinModal] = useState(false);
     const [joinMessage, setJoinMessage] = useState("");
@@ -292,6 +295,7 @@ export default function CrewProfilePage() {
                             { key: "members", label: "멤버", count: members.length },
                             { key: "events", label: "행사", count: crewEventDetails.length },
                             { key: "calendar", label: "캘린더", count: 0 },
+                            { key: "stats", label: "통계", count: 0 },
                             ...(userIsLeader ? [{ key: "manage", label: "관리", count: pendingRequestCount }] : []),
                         ].map(tab => (
                             <button
@@ -467,6 +471,15 @@ export default function CrewProfilePage() {
                 {/* 캘린더 탭 */}
                 {activeTab === "calendar" && (
                     <CrewCalendar crewId={crewId} />
+                )}
+
+                {/* 통계 탭 */}
+                {activeTab === "stats" && (
+                    <div className="space-y-8">
+                        <CrewHeatmap crewId={crewId} />
+                        <CrewStats crewId={crewId} />
+                        <CrewSimilarMembers crewId={crewId} />
+                    </div>
                 )}
 
                 {/* 관리 탭 (크루장 전용) */}

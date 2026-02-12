@@ -2,6 +2,7 @@
 
 import { notFound, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { use, useState, useMemo, useCallback, useEffect } from "react";
 import {
     Calendar,
@@ -13,12 +14,15 @@ import {
     Plus,
     Check,
     Loader2,
+    Clock,
+    Ticket,
+    Users,
 } from "lucide-react";
 import { getSlotsByEventId } from "@/lib/mock-data";
 import { useEvent, useEventCounts } from "@/lib/supabase/hooks";
 import { usePost } from "@/lib/post-context";
 import { cn, isValidUUID } from "@/lib/utils";
-import { getHubMode, HubMode } from "@/types/event";
+import { getHubMode, HubMode, getDDayBadge } from "@/types/event";
 import { PostComposer } from "@/components/posts/PostComposer";
 import { formatDateTime } from "@/lib/utils/date-format";
 import { OverviewTab, HubTab, TimetableTab, ArtistsTab } from "./components";
@@ -27,6 +31,7 @@ import { useDevContext } from "@/lib/dev-context";
 import { useAuth } from "@/lib/auth-context";
 import { useEventRegistration } from "@/lib/event-registration-context";
 import { LoginPromptModal } from "@/components/auth";
+import { LiveBadge, StatusBadge, TabSlider, type TabItem } from "@/components/ui";
 
 interface PageProps {
     params: Promise<{ id: string }>;
@@ -34,43 +39,30 @@ interface PageProps {
 
 type TabType = "overview" | "hub" | "timetable" | "artists";
 
-/**
- * 행사 상세 페이지 - PRD v0.5 기준
- * - 상단 헤더: ⭐찜 / ✅다녀옴
- * - 탭 구조: 개요 | 허브 | 타임테이블 | 아티스트
- */
 export default function EventDetailPage({ params }: PageProps) {
     const { id } = use(params);
     const searchParams = useSearchParams();
     const router = useRouter();
 
-    // 사용자 등록 행사 Context
     const { getEvent: getUserEvent } = useEventRegistration();
 
-    // 사용자 등록 행사인지 확인 (user-event- 접두사)
     const isUserEvent = id.startsWith("user-event-");
 
-    // Supabase에서 이벤트 데이터 가져오기 (오류 시 Mock 폴백)
-    const { event: supabaseEvent, isLoading: isSupabaseLoading, isFromSupabase } = useEvent(isUserEvent ? null : id);
+    const { event: supabaseEvent, isLoading: isSupabaseLoading } = useEvent(isUserEvent ? null : id);
 
-    // 사용자 등록 행사이면 Context에서 조회, 아니면 Supabase/Mock에서 조회
     const userRegisteredEvent = isUserEvent ? getUserEvent(id) : undefined;
     const event = userRegisteredEvent || supabaseEvent;
     const isLoading = isUserEvent ? false : isSupabaseLoading;
 
-    // 실시간 카운트 구독 (Supabase 사용자만)
-    const { wishlistCount: realtimeWishlistCount, attendedCount: realtimeAttendedCount, status: realtimeStatus } = useEventCounts({
+    const { wishlistCount: realtimeWishlistCount, attendedCount: realtimeAttendedCount } = useEventCounts({
         eventId: id,
     });
 
-    // URL의 tab 쿼리 파라미터로 초기 탭 결정
     const initialTab = (searchParams.get("tab") as TabType) || "overview";
     const [activeTab, setActiveTab] = useState<TabType>(initialTab);
 
-    // 탭 변경 시 URL도 업데이트
-    const handleTabChange = useCallback((tab: TabType) => {
-        setActiveTab(tab);
-        // URL 업데이트 (새로고침 시 탭 유지)
+    const handleTabChange = useCallback((tab: string) => {
+        setActiveTab(tab as TabType);
         const url = new URL(window.location.href);
         if (tab === "overview") {
             url.searchParams.delete("tab");
@@ -84,10 +76,8 @@ export default function EventDetailPage({ params }: PageProps) {
     const [showLoginPrompt, setShowLoginPrompt] = useState(false);
     const [pendingAction, setPendingAction] = useState<string>("");
 
-    // 인증 상태
     const { user } = useAuth();
 
-    // URL 변경 시 탭 업데이트 (알림 딥링크 등에서 접근 시)
     useEffect(() => {
         const tabParam = searchParams.get("tab") as TabType;
         if (tabParam && ["overview", "hub", "timetable", "artists"].includes(tabParam)) {
@@ -95,16 +85,12 @@ export default function EventDetailPage({ params }: PageProps) {
         }
     }, [searchParams]);
 
-    // 찜/다녀옴 상태 (Context)
     const { isWishlist, isAttended, toggleWishlist, toggleAttended } = useWishlist();
 
-    // Mock 이벤트용 로컬 카운트 (Supabase 이벤트는 realtime으로 처리)
-    // 사용자 등록 행사도 Mock처럼 로컬 카운트 사용
     const isMockEvent = !isValidUUID(id) || isUserEvent;
     const [localWishlistDelta, setLocalWishlistDelta] = useState(0);
     const [localAttendedDelta, setLocalAttendedDelta] = useState(0);
 
-    // 찜 토글 래퍼 (로컬 카운트 업데이트 포함)
     const handleToggleWishlist = useCallback(() => {
         const wasWishlisted = isWishlist(id);
         toggleWishlist(id);
@@ -113,7 +99,6 @@ export default function EventDetailPage({ params }: PageProps) {
         }
     }, [id, isWishlist, toggleWishlist, isMockEvent]);
 
-    // 다녀옴 토글 래퍼 (로컬 카운트 업데이트 포함)
     const handleToggleAttended = useCallback(() => {
         const wasAttended = isAttended(id);
         toggleAttended(id);
@@ -122,7 +107,6 @@ export default function EventDetailPage({ params }: PageProps) {
         }
     }, [id, isAttended, toggleAttended, isMockEvent]);
 
-    // 최종 카운트 계산
     const displayWishlistCount = isMockEvent
         ? (event?.stats?.wishlistCount || 0) + localWishlistDelta
         : (realtimeWishlistCount || event?.stats?.wishlistCount || 0);
@@ -130,7 +114,6 @@ export default function EventDetailPage({ params }: PageProps) {
         ? (event?.stats?.attendedCount || 0) + localAttendedDelta
         : (realtimeAttendedCount || event?.stats?.attendedCount || 0);
 
-    // Dev Context - 시간 시뮬레이션, 시나리오 데이터, override 모드
     const {
         getNow,
         overrideMode,
@@ -141,16 +124,12 @@ export default function EventDetailPage({ params }: PageProps) {
         scenarioSlots,
     } = useDevContext();
 
-    // Post Context - 글 조회
     const { getPostsByEvent } = usePost();
 
-    // 이 행사의 포스트와 슬롯 (Dev 모드에서 시나리오 데이터 사용)
     const posts = useMemo(() => {
-        // Dev 모드이고 현재 이벤트가 시나리오 이벤트와 같으면 시나리오 데이터 사용
         if (isDevMode && id === scenarioEventId && scenarioPosts.length > 0) {
             return scenarioPosts;
         }
-        // PostContext에서 가져오기 (새로 작성한 글 포함)
         return getPostsByEvent(id);
     }, [id, isDevMode, scenarioEventId, scenarioPosts, getPostsByEvent]);
 
@@ -161,10 +140,8 @@ export default function EventDetailPage({ params }: PageProps) {
         return getSlotsByEventId(id);
     }, [id, isDevMode, scenarioEventId, scenarioSlots]);
 
-    // 실제 로그인 또는 Dev 모드 로그인 상태 확인
     const isLoggedIn = !!user || isDevLoggedIn;
 
-    // 로그인 필요한 액션 처리
     const requireAuth = useCallback((action: string, callback: () => void) => {
         if (isLoggedIn) {
             callback();
@@ -174,7 +151,6 @@ export default function EventDetailPage({ params }: PageProps) {
         }
     }, [isLoggedIn]);
 
-    // 공유 기능
     const handleShare = useCallback(async () => {
         const shareData = {
             title: event?.title || "FesMate",
@@ -183,19 +159,15 @@ export default function EventDetailPage({ params }: PageProps) {
         };
 
         try {
-            // Web Share API 지원 확인
             if (navigator.share && navigator.canShare?.(shareData)) {
                 await navigator.share(shareData);
             } else {
-                // Fallback: URL 복사
                 await navigator.clipboard.writeText(window.location.href);
                 setShareStatus("copied");
                 setTimeout(() => setShareStatus("idle"), 2000);
             }
         } catch (error) {
-            // 사용자가 공유 취소한 경우 무시
             if ((error as Error).name !== "AbortError") {
-                // Fallback: URL 복사
                 await navigator.clipboard.writeText(window.location.href);
                 setShareStatus("copied");
                 setTimeout(() => setShareStatus("idle"), 2000);
@@ -203,13 +175,12 @@ export default function EventDetailPage({ params }: PageProps) {
         }
     }, [event]);
 
-    // 로딩 중 표시
     if (isLoading) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
                 <div className="flex flex-col items-center gap-3">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    <p className="text-muted-foreground">행사 정보를 불러오는 중...</p>
+                    <p className="text-text-secondary">행사 정보를 불러오는 중...</p>
                 </div>
             </div>
         );
@@ -219,156 +190,204 @@ export default function EventDetailPage({ params }: PageProps) {
         notFound();
     }
 
-    // 현재 시간 기준 자동 계산 (Dev 모드에서는 시뮬레이션 시간 사용)
     const now = getNow();
     const autoHubMode = getHubMode(event, now);
-    // Override 모드 적용 (AUTO가 아니면 강제 적용)
     const hubMode: HubMode = overrideMode === "AUTO" ? autoHubMode : overrideMode;
     const isOverridden = overrideMode !== "AUTO" && overrideMode !== autoHubMode;
+    const dDayBadge = getDDayBadge(event.startAt, now);
 
-    const tabs: { key: TabType; label: string; badge?: string }[] = [
-        { key: "overview", label: "개요" },
-        { key: "hub", label: "허브", badge: hubMode === "LIVE" ? "LIVE" : undefined },
-        { key: "timetable", label: "타임테이블" },
-        { key: "artists", label: "아티스트" },
+    const tabs: TabItem[] = [
+        { id: "overview", label: "개요" },
+        { id: "hub", label: "허브", isLive: hubMode === "LIVE" },
+        { id: "timetable", label: "타임테이블" },
+        { id: "artists", label: "아티스트" },
     ];
+
+    const formatTime = (date: Date) => {
+        return new Intl.DateTimeFormat("ko-KR", {
+            hour: "2-digit",
+            minute: "2-digit",
+        }).format(new Date(date));
+    };
 
     return (
         <div className="min-h-screen bg-background pb-24">
-            {/* Sticky Header */}
-            <header className="sticky top-0 z-50 flex h-14 items-center justify-between border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+            <header className="sticky top-0 z-50 flex h-14 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
                 <Link
                     href="/explore"
-                    className="flex items-center text-muted-foreground hover:text-foreground"
+                    className="flex items-center text-text-muted hover:text-text-primary transition-colors"
                 >
                     <ChevronLeft className="h-6 w-6" />
                 </Link>
-                <h1 className="flex-1 truncate px-4 text-center text-sm font-bold">
+                <h1 className="flex-1 truncate px-4 text-center text-sm font-bold text-text-primary">
                     {event.title}
                 </h1>
                 <button
                     onClick={handleShare}
-                    className="text-muted-foreground hover:text-foreground relative"
+                    className="text-text-muted hover:text-text-primary transition-colors relative"
                     title="공유하기"
                 >
                     {shareStatus === "copied" ? (
-                        <Check className="h-5 w-5 text-green-500" />
+                        <Check className="h-5 w-5 text-status-recruiting" />
                     ) : (
                         <Share2 className="h-5 w-5" />
                     )}
                 </button>
             </header>
 
-            {/* Hero Section */}
             <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-b from-primary/10 to-background z-0" />
-                <div className="relative z-10 p-6 flex flex-col items-center gap-6">
-                    {/* Poster */}
-                    <div className="relative aspect-[3/4] w-48 overflow-hidden rounded-lg shadow-xl">
+                <div className="absolute inset-0 h-64 bg-gradient-to-b from-primary/5 to-background z-0" />
+                <div className="relative z-10 p-6 flex flex-col items-center gap-5">
+                    <div className="relative aspect-[3/4] w-44 overflow-hidden rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)]">
                         {event.posterUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
+                            <Image
                                 src={event.posterUrl}
                                 alt={event.title}
-                                className="h-full w-full object-cover"
+                                fill
+                                sizes="176px"
+                                className="object-cover"
+                                priority
                             />
                         ) : (
-                            <div className="absolute inset-0 bg-muted flex items-center justify-center text-muted-foreground">
+                            <div className="absolute inset-0 bg-background-secondary flex items-center justify-center text-text-muted">
                                 Poster
                             </div>
                         )}
-                        {/* LIVE/RECAP 배지 */}
-                        {hubMode === "LIVE" && event.status === "SCHEDULED" && (
-                            <div className="absolute top-2 left-2">
-                                <span className={cn(
-                                    "px-2 py-1 text-xs font-bold rounded-full bg-red-500 text-white",
-                                    !isOverridden && "animate-pulse"
-                                )}>
-                                    LIVE {isOverridden && isDevMode && "(DEV)"}
-                                </span>
-                            </div>
-                        )}
-                        {hubMode === "RECAP" && isOverridden && isDevMode && (
-                            <div className="absolute top-2 left-2">
-                                <span className="px-2 py-1 text-xs font-bold rounded-full bg-gray-600 text-white">
-                                    RECAP (DEV)
-                                </span>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Key Info */}
-                    <div className="text-center space-y-2">
-                        <h2 className="text-xl font-bold leading-tight">{event.title}</h2>
-                        <div className="flex flex-col items-center gap-1 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-1">
-                                <Calendar className="h-4 w-4" />
-                                <span>{formatDateTime(event.startAt)}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <MapPin className="h-4 w-4" />
-                                <span>{event.venue?.name}</span>
-                            </div>
+                        <div className="absolute top-2 left-2 flex flex-col gap-1">
+                            {hubMode === "LIVE" && event.status === "SCHEDULED" && (
+                                <LiveBadge />
+                            )}
+                            {hubMode === "RECAP" && event.status === "SCHEDULED" && (
+                                <StatusBadge variant="ended">RECAP</StatusBadge>
+                            )}
+                            {hubMode !== "LIVE" && hubMode !== "RECAP" && dDayBadge && event.status === "SCHEDULED" && (
+                                <StatusBadge variant="soon">{dDayBadge}</StatusBadge>
+                            )}
+                            {event.status === "CANCELED" && (
+                                <StatusBadge variant="canceled">취소됨</StatusBadge>
+                            )}
+                            {event.status === "POSTPONED" && (
+                                <StatusBadge variant="postponed">일정 변경</StatusBadge>
+                            )}
+                            {isOverridden && isDevMode && (
+                                <StatusBadge variant="dday">DEV</StatusBadge>
+                            )}
                         </div>
                     </div>
 
-                    {/* Action Buttons - ⭐찜 / ✅다녀옴 */}
-                    <div className="flex w-full gap-3">
+                    <div className="text-center space-y-2 max-w-xs">
+                        <h2 className="text-xl font-bold leading-tight text-text-primary">{event.title}</h2>
+                    </div>
+
+                    <div className="flex flex-wrap justify-center gap-2">
+                        <div className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5",
+                            "rounded-full bg-card shadow-[var(--shadow-sm)]",
+                            "text-xs text-text-secondary"
+                        )}>
+                            <Calendar className="h-3.5 w-3.5 text-primary" />
+                            <span>{formatDateTime(event.startAt)}</span>
+                        </div>
+                        <div className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5",
+                            "rounded-full bg-card shadow-[var(--shadow-sm)]",
+                            "text-xs text-text-secondary"
+                        )}>
+                            <Clock className="h-3.5 w-3.5 text-primary" />
+                            <span>{formatTime(event.startAt)}</span>
+                        </div>
+                        <div className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5",
+                            "rounded-full bg-card shadow-[var(--shadow-sm)]",
+                            "text-xs text-text-secondary"
+                        )}>
+                            <MapPin className="h-3.5 w-3.5 text-primary" />
+                            <span className="max-w-[120px] truncate">{event.venue?.name}</span>
+                        </div>
+                        {event.ticketLinks && event.ticketLinks.length > 0 && (
+                            <a
+                                href={event.ticketLinks[0].url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={cn(
+                                    "flex items-center gap-1.5 px-3 py-1.5",
+                                    "rounded-full bg-primary/10 shadow-[var(--shadow-sm)]",
+                                    "text-xs text-primary font-medium",
+                                    "hover:bg-primary/20 transition-colors"
+                                )}
+                            >
+                                <Ticket className="h-3.5 w-3.5" />
+                                <span>예매</span>
+                            </a>
+                        )}
+                    </div>
+
+                    <div className="flex w-full gap-3 max-w-sm">
                         <button
                             onClick={() => requireAuth("찜하기", handleToggleWishlist)}
                             className={cn(
-                                "flex-1 flex items-center justify-center gap-2 rounded-full border py-2.5 text-sm font-medium transition-colors",
+                                "flex-1 flex items-center justify-center gap-2 py-2.5",
+                                "rounded-full text-sm font-medium",
+                                "transition-all duration-[var(--transition-normal)]",
                                 isWishlist(id)
-                                    ? "bg-yellow-50 border-yellow-400 text-yellow-700"
-                                    : "bg-background hover:bg-accent"
+                                    ? "bg-warning/10 text-warning border border-warning"
+                                    : "bg-card border border-border hover:border-warning hover:text-warning shadow-[var(--shadow-sm)]"
                             )}
                         >
-                            <Star className={cn("h-4 w-4", isWishlist(id) && "fill-yellow-400")} />
+                            <Star className={cn("h-4 w-4", isWishlist(id) && "fill-warning")} />
                             <span>찜 {displayWishlistCount.toLocaleString()}</span>
                         </button>
                         <button
                             onClick={() => requireAuth("다녀옴 기록", handleToggleAttended)}
                             className={cn(
-                                "flex-1 flex items-center justify-center gap-2 rounded-full border py-2.5 text-sm font-medium transition-colors",
+                                "flex-1 flex items-center justify-center gap-2 py-2.5",
+                                "rounded-full text-sm font-medium",
+                                "transition-all duration-[var(--transition-normal)]",
                                 isAttended(id)
-                                    ? "bg-green-50 border-green-400 text-green-700"
-                                    : "bg-background hover:bg-accent"
+                                    ? "bg-status-recruiting/10 text-status-recruiting border border-status-recruiting"
+                                    : "bg-card border border-border hover:border-status-recruiting hover:text-status-recruiting shadow-[var(--shadow-sm)]"
                             )}
                         >
-                            <CheckCircle2 className={cn("h-4 w-4", isAttended(id) && "fill-green-400")} />
+                            <CheckCircle2 className={cn("h-4 w-4", isAttended(id) && "fill-status-recruiting")} />
                             <span>다녀옴 {displayAttendedCount.toLocaleString()}</span>
                         </button>
                     </div>
-                </div>
-            </div>
 
-            {/* Tab Navigation */}
-            <div className="sticky top-14 z-40 bg-background border-b">
-                <div className="flex">
-                    {tabs.map((tab) => (
-                        <button
-                            key={tab.key}
-                            onClick={() => handleTabChange(tab.key)}
-                            className={cn(
-                                "flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-1",
-                                activeTab === tab.key
-                                    ? "border-primary text-primary"
-                                    : "border-transparent text-muted-foreground hover:text-foreground"
-                            )}
-                        >
-                            {tab.label}
-                            {tab.badge && (
-                                <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-red-500 text-white animate-pulse">
-                                    {tab.badge}
+                    {(displayWishlistCount > 0 || displayAttendedCount > 0 || (event.stats?.companionCount ?? 0) > 0) && (
+                        <div className="flex items-center gap-4 text-xs text-text-muted">
+                            {displayWishlistCount > 0 && (
+                                <span className="flex items-center gap-1">
+                                    <Star className="h-3 w-3" />
+                                    {displayWishlistCount.toLocaleString()}명 찜
                                 </span>
                             )}
-                        </button>
-                    ))}
+                            {displayAttendedCount > 0 && (
+                                <span className="flex items-center gap-1">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    {displayAttendedCount.toLocaleString()}명 다녀옴
+                                </span>
+                            )}
+                            {(event.stats?.companionCount ?? 0) > 0 && (
+                                <span className="flex items-center gap-1">
+                                    <Users className="h-3 w-3" />
+                                    {event.stats?.companionCount}개 동행글
+                                </span>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* Tab Content */}
-            <div className="px-4 py-6">
+            <div className="sticky top-14 z-40 bg-background">
+                <TabSlider
+                    tabs={tabs}
+                    activeTab={activeTab}
+                    onTabChange={handleTabChange}
+                    fullWidth
+                />
+            </div>
+
+            <div className="px-4 py-6" id={`tabpanel-${activeTab}`} role="tabpanel">
                 {activeTab === "overview" && (
                     <OverviewTab event={event} />
                 )}
@@ -383,17 +402,21 @@ export default function EventDetailPage({ params }: PageProps) {
                 )}
             </div>
 
-            {/* Floating Action Button */}
             <div className="fixed bottom-20 right-4 z-40">
                 <button
                     onClick={() => setIsComposerOpen(true)}
-                    className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 active:scale-95"
+                    className={cn(
+                        "flex h-14 w-14 items-center justify-center",
+                        "rounded-full bg-primary text-primary-foreground",
+                        "shadow-[var(--shadow-lg)]",
+                        "transition-transform duration-[var(--transition-normal)]",
+                        "hover:scale-105 active:scale-95"
+                    )}
                 >
                     <Plus className="h-6 w-6" />
                 </button>
             </div>
 
-            {/* Post Composer Modal */}
             <PostComposer
                 isOpen={isComposerOpen}
                 onClose={() => setIsComposerOpen(false)}
@@ -401,7 +424,6 @@ export default function EventDetailPage({ params }: PageProps) {
                 eventTitle={event.title}
             />
 
-            {/* Login Prompt Modal */}
             <LoginPromptModal
                 isOpen={showLoginPrompt}
                 onClose={() => setShowLoginPrompt(false)}

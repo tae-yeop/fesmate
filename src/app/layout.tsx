@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Noto_Sans_KR } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/layout/Header";
@@ -7,6 +7,7 @@ import { DevProvider } from "@/lib/dev-context";
 import { DevPanel, DevStatusBar } from "@/components/dev";
 import { BadgeToast } from "@/components/badge/BadgeToast";
 import { AuthProvider } from "@/lib/auth-context";
+import { ThemeProvider } from "@/lib/theme-context";
 import { BlockProvider } from "@/lib/block-context";
 import { WishlistProvider } from "@/lib/wishlist-context";
 import { HelpfulProvider } from "@/lib/helpful-context";
@@ -32,6 +33,8 @@ import { RateLimitProvider } from "@/lib/rate-limit-context";
 import { TrustProvider } from "@/lib/trust-context";
 import { SanctionProvider } from "@/lib/sanction-context";
 import { PushProvider } from "@/lib/push-context";
+import { SetlistProvider } from "@/lib/setlist-context";
+import { OfflineProvider } from "@/lib/offline-context";
 import { NotificationPermissionBanner } from "@/components/notification";
 
 const inter = Inter({
@@ -45,11 +48,17 @@ const notoSansKr = Noto_Sans_KR({
   weight: ["100", "300", "400", "500", "700", "900"],
 });
 
+export const viewport: Viewport = {
+  themeColor: "#6366f1",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+};
+
 export const metadata: Metadata = {
   title: "FesMate - Festival Mate",
   description: "Your ultimate festival companion",
   manifest: "/manifest.json",
-  themeColor: "#6366f1",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -70,9 +79,10 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${notoSansKr.variable} antialiased min-h-screen bg-background font-sans`}
       >
-        <AuthProvider>
-          <DevProvider>
-            <BlockProvider>
+        <ThemeProvider defaultTheme="system" storageKey="fesmate-theme">
+          <AuthProvider>
+            <DevProvider>
+              <BlockProvider>
               <SanctionProvider>
               <TrustProvider>
               <RateLimitProvider>
@@ -96,7 +106,9 @@ export default function RootLayout({
                       <GalleryProvider>
                       <EventRegistrationProvider>
                       <TimetableSuggestionProvider>
+                      <SetlistProvider>
                       <PushProvider>
+                      <OfflineProvider>
                       <DevStatusBar />
                       <div className="relative flex min-h-screen flex-col">
                         <Header />
@@ -106,7 +118,9 @@ export default function RootLayout({
                         <BadgeToast />
                         <NotificationPermissionBanner />
                       </div>
+                      </OfflineProvider>
                       </PushProvider>
+                      </SetlistProvider>
                       </TimetableSuggestionProvider>
                       </EventRegistrationProvider>
                       </GalleryProvider>
@@ -130,9 +144,10 @@ export default function RootLayout({
               </RateLimitProvider>
               </TrustProvider>
               </SanctionProvider>
-            </BlockProvider>
-          </DevProvider>
-        </AuthProvider>
+              </BlockProvider>
+            </DevProvider>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
