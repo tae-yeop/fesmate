@@ -88,13 +88,15 @@ describe("ParticipationContext", () => {
         const { result } = renderHook(() => useParticipation(), { wrapper });
 
         // 먼저 신청 보내기
-        let newRequestId: string;
+        let newRequestId: string = "";
         act(() => {
             const request = result.current.sendRequest({
                 postId: "test-post-cancel",
                 postAuthorId: "user3",
             });
-            newRequestId = request.id;
+            if (request) {
+                newRequestId = request.id;
+            }
         });
 
         // 취소
