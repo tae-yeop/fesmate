@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { Calendar, MapPin, Star, CheckCircle2, Users } from "lucide-react";
 import { Event, getHubMode, getDDayBadge } from "@/types/event";
 import { cn } from "@/lib/utils";
@@ -54,14 +55,14 @@ export function EventListItem({
                 href={eventLink}
                 className="flex gap-4 rounded-lg border bg-card p-4 transition-all hover:shadow-md"
             >
-                {/* 포스터 썸네일 */}
                 <div className="relative h-24 w-18 flex-shrink-0 overflow-hidden rounded bg-muted">
                     {event.posterUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
+                        <Image
                             src={event.posterUrl}
                             alt={event.title}
-                            className="h-full w-full object-cover"
+                            fill
+                            sizes="72px"
+                            className="object-cover"
                         />
                     ) : (
                         <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
