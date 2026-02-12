@@ -118,9 +118,11 @@ export const DOMAINS = {
   GALLERIES: "galleries",
   SLOT_CONTENTS: "slot-contents",
   SLOT_CONTENT_HELPFUL: "slot-content-helpful",
-  USER_POSTS: "user-posts", // Mock 모드에서 사용자가 작성한 글
+  USER_POSTS: "user-posts",
+  SETLISTS: "setlists",
+  SETLIST_HELPFUL: "setlist-helpful",
 
-  // Device (기기별 설정)
+  // Device
   TICKETBOOK_VIEW: "ticketbook-view",
   MAP_APP: "map-app",
 } as const;
