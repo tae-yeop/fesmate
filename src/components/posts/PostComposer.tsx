@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
     X,
@@ -29,6 +29,10 @@ import {
     Search,
     ChevronRight,
     Calendar,
+    Cloud,
+    CloudOff,
+    RefreshCw,
+    Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PostType, POST_TYPE_LABELS } from "@/types/post";
@@ -42,6 +46,9 @@ import { ImageUploader } from "@/components/image";
 import { MOCK_EVENTS } from "@/lib/mock-data";
 import { useWishlist } from "@/lib/wishlist-context";
 import { Event } from "@/types/event";
+import { useOffline } from "@/lib/offline-context";
+import { useAutosave, useAutosaveIndicator, AutosaveStatus } from "@/lib/hooks/use-autosave";
+import { PostDraft, formatDraftAge } from "@/lib/offline";
 
 interface PostComposerProps {
     isOpen: boolean;
@@ -118,6 +125,7 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, o
     const { wishlist } = useWishlist();
     const { createPost } = usePost();
     const { checkRateLimit, recordPost, getCooldownStatus } = useRateLimit();
+    const { state: offlineState, postDrafts, savePostDraft, updateDraft, deleteDraft } = useOffline();
     const isEditMode = !!editPost;
 
     // 에러/경고 상태
@@ -127,8 +135,8 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, o
     // 실제 로그인 또는 Dev 모드 로그인 상태 확인
     const isLoggedIn = !!user || isDevLoggedIn;
 
-    // 단계: select (타입 선택) -> compose (작성)
-    const [step, setStep] = useState<"select" | "compose">(isEditMode ? "compose" : "select");
+    // 단계: select (타입 선택) -> compose (작성) -> drafts (임시저장 목록)
+    const [step, setStep] = useState<"select" | "compose" | "drafts">(isEditMode ? "compose" : "select");
     const [selectedType, setSelectedType] = useState<PostType | null>(null);
     const [content, setContent] = useState(editPost?.content || "");
     const [images, setImages] = useState<UploadedImage[]>([]);
@@ -153,6 +161,89 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, o
     // 후기용 추가 필드
     const [rating, setRating] = useState(5);
     const [videoUrl, setVideoUrl] = useState("");
+
+    // 현재 작성 중인 임시저장 ID
+    const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
+
+    // 자동저장 데이터
+    const autosaveData = useMemo(() => ({
+        eventId: selectedEventId,
+        postType: selectedType,
+        content,
+        meetTime,
+        placeText,
+        placeHint,
+        maxPeople,
+        videoUrl,
+        rating,
+    }), [selectedEventId, selectedType, content, meetTime, placeText, placeHint, maxPeople, videoUrl, rating]);
+
+    // 자동저장 핸들러
+    const handleAutosave = useCallback(async (data: typeof autosaveData) => {
+        if (isEditMode) return;
+        if (!data.content && !data.postType) return;
+
+        try {
+            if (currentDraftId) {
+                await updateDraft(currentDraftId, {
+                    eventId: data.eventId,
+                    postType: data.postType,
+                    content: data.content,
+                    meetTime: data.meetTime,
+                    placeText: data.placeText,
+                    placeHint: data.placeHint,
+                    maxPeople: data.maxPeople,
+                    videoUrl: data.videoUrl,
+                    rating: data.rating,
+                });
+            } else {
+                const draft = await savePostDraft({
+                    eventId: data.eventId,
+                    postType: data.postType,
+                    content: data.content,
+                    meetTime: data.meetTime,
+                    placeText: data.placeText,
+                    placeHint: data.placeHint,
+                    maxPeople: data.maxPeople,
+                    videoUrl: data.videoUrl,
+                    rating: data.rating,
+                });
+                setCurrentDraftId(draft.id);
+            }
+        } catch (error) {
+            console.error("[PostComposer] Autosave failed:", error);
+        }
+    }, [isEditMode, currentDraftId, updateDraft, savePostDraft]);
+
+    // 자동저장 훅
+    const { status: autosaveStatus, lastSavedAt } = useAutosave({
+        data: autosaveData,
+        onSave: handleAutosave,
+        enabled: step === "compose" && !isEditMode && isLoggedIn,
+    });
+
+    // 임시저장 복원
+    const restoreDraft = useCallback((draft: PostDraft) => {
+        setCurrentDraftId(draft.id);
+        setSelectedEventId(draft.eventId);
+        setSelectedType(draft.postType);
+        setContent(draft.content);
+        setMeetTime(draft.meetTime || "");
+        setPlaceText(draft.placeText || "");
+        setPlaceHint(draft.placeHint || "");
+        setMaxPeople(draft.maxPeople || 4);
+        setVideoUrl(draft.videoUrl || "");
+        setRating(draft.rating || 5);
+        setStep("compose");
+    }, []);
+
+    // 임시저장 삭제
+    const handleDeleteDraft = useCallback(async (draftId: string) => {
+        await deleteDraft(draftId);
+        if (currentDraftId === draftId) {
+            setCurrentDraftId(null);
+        }
+    }, [deleteDraft, currentDraftId]);
 
     if (!isOpen) return null;
 
@@ -213,8 +304,13 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, o
     };
 
     const handleBack = () => {
-        setStep("select");
-        setSelectedType(null);
+        if (step === "drafts") {
+            setStep("select");
+        } else {
+            setStep("select");
+            setSelectedType(null);
+            setCurrentDraftId(null);
+        }
     };
 
     const handleSubmit = async () => {
@@ -279,8 +375,10 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, o
             });
 
             if (newPost) {
-                // Rate limit 기록
                 recordPost(newPost.id, selectedType);
+                if (currentDraftId) {
+                    await deleteDraft(currentDraftId);
+                }
             } else {
                 setSubmitError("글 작성에 실패했습니다. 다시 시도해주세요.");
                 return;
@@ -288,7 +386,6 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, o
         }
 
         onClose();
-        // 폼 리셋
         setStep("select");
         setSelectedType(null);
         setSelectedEventId(eventId || null);
@@ -302,6 +399,7 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, o
         setVideoUrl("");
         setSubmitError(null);
         setContentWarning(null);
+        setCurrentDraftId(null);
     };
 
     const isValid = () => {
@@ -326,20 +424,27 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, o
             <div className="relative w-full max-w-lg bg-background rounded-t-2xl sm:rounded-2xl max-h-[90vh] overflow-hidden flex flex-col">
                 {/* 헤더 */}
                 <div className="flex items-center justify-between px-4 py-3 border-b">
-                    {step === "compose" && !isEditMode ? (
+                    {(step === "compose" || step === "drafts") && !isEditMode ? (
                         <button onClick={handleBack} className="p-1 hover:bg-accent rounded">
                             <ChevronLeft className="h-5 w-5" />
                         </button>
                     ) : (
                         <div className="w-7" />
                     )}
-                    <h2 className="font-bold">
-                        {isEditMode
-                            ? "글 수정"
-                            : step === "select"
-                                ? "글 작성"
-                                : selectedOption?.label}
-                    </h2>
+                    <div className="flex items-center gap-2">
+                        <h2 className="font-bold">
+                            {isEditMode
+                                ? "글 수정"
+                                : step === "select"
+                                    ? "글 작성"
+                                    : step === "drafts"
+                                        ? "임시저장"
+                                        : selectedOption?.label}
+                        </h2>
+                        {step === "compose" && !isEditMode && (
+                            <AutosaveIndicator status={autosaveStatus} isOnline={offlineState.isOnline} />
+                        )}
+                    </div>
                     <button onClick={onClose} className="p-1 hover:bg-accent rounded">
                         <X className="h-5 w-5" />
                     </button>
@@ -371,7 +476,17 @@ export function PostComposer({ isOpen, onClose, eventId, eventTitle, editPost, o
                 {/* 콘텐츠 */}
                 <div className="flex-1 overflow-y-auto">
                     {step === "select" ? (
-                        <TypeSelector onSelect={handleSelectType} />
+                        <TypeSelector 
+                            onSelect={handleSelectType}
+                            draftCount={postDrafts.length}
+                            onViewDrafts={() => setStep("drafts")}
+                        />
+                    ) : step === "drafts" ? (
+                        <DraftList
+                            drafts={postDrafts}
+                            onRestore={restoreDraft}
+                            onDelete={handleDeleteDraft}
+                        />
                     ) : (
                         <ComposeForm
                             type={selectedType!}
@@ -632,8 +747,38 @@ function EventSelectorModal({
     );
 }
 
-// 타입 선택 UI
-function TypeSelector({ onSelect }: { onSelect: (type: PostType) => void }) {
+function AutosaveIndicator({ status, isOnline }: { status: AutosaveStatus; isOnline: boolean }) {
+    const indicator = useAutosaveIndicator(status);
+
+    if (!isOnline) {
+        return (
+            <span className="text-xs text-amber-600 flex items-center gap-1">
+                <CloudOff className="h-3 w-3" />
+                오프라인
+            </span>
+        );
+    }
+
+    if (status === "idle") return null;
+
+    return (
+        <span className={cn("text-xs flex items-center gap-1", indicator.className)}>
+            {status === "saving" && <RefreshCw className="h-3 w-3 animate-spin" />}
+            {status === "saved" && <Cloud className="h-3 w-3" />}
+            {indicator.text}
+        </span>
+    );
+}
+
+function TypeSelector({ 
+    onSelect,
+    draftCount,
+    onViewDrafts,
+}: { 
+    onSelect: (type: PostType) => void;
+    draftCount: number;
+    onViewDrafts: () => void;
+}) {
     const categories: { key: CategoryType; label: string }[] = [
         { key: "realtime", label: "실시간 제보" },
         { key: "community", label: "커뮤니티" },
@@ -642,6 +787,23 @@ function TypeSelector({ onSelect }: { onSelect: (type: PostType) => void }) {
 
     return (
         <div className="p-4 space-y-6">
+            {draftCount > 0 && (
+                <button
+                    onClick={onViewDrafts}
+                    className="w-full p-3 rounded-lg border border-dashed border-primary/50 bg-primary/5 hover:bg-primary/10 transition-colors flex items-center justify-between"
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                            <RefreshCw className="h-5 w-5 text-primary" />
+                        </div>
+                        <div className="text-left">
+                            <p className="font-medium text-sm">임시저장된 글</p>
+                            <p className="text-xs text-muted-foreground">{draftCount}개의 글이 저장되어 있습니다</p>
+                        </div>
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                </button>
+            )}
             {categories.map((cat) => (
                 <section key={cat.key}>
                     <h3 className="text-sm font-bold text-muted-foreground mb-3">{cat.label}</h3>
@@ -667,6 +829,71 @@ function TypeSelector({ onSelect }: { onSelect: (type: PostType) => void }) {
                     </div>
                 </section>
             ))}
+        </div>
+    );
+}
+
+function DraftList({
+    drafts,
+    onRestore,
+    onDelete,
+}: {
+    drafts: PostDraft[];
+    onRestore: (draft: PostDraft) => void;
+    onDelete: (id: string) => void;
+}) {
+    if (drafts.length === 0) {
+        return (
+            <div className="p-8 text-center">
+                <RefreshCw className="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
+                <p className="text-muted-foreground">임시저장된 글이 없습니다</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="p-4 space-y-3">
+            {drafts.map((draft) => {
+                const typeOption = POST_TYPE_OPTIONS.find(o => o.type === draft.postType);
+                const event = draft.eventId ? MOCK_EVENTS.find(e => e.id === draft.eventId) : null;
+
+                return (
+                    <div
+                        key={draft.id}
+                        className="p-3 rounded-lg border hover:border-primary/50 transition-colors"
+                    >
+                        <div className="flex items-start justify-between gap-2">
+                            <button
+                                onClick={() => onRestore(draft)}
+                                className="flex-1 text-left"
+                            >
+                                <div className="flex items-center gap-2 mb-1">
+                                    {typeOption && (
+                                        <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                                            {typeOption.label}
+                                        </span>
+                                    )}
+                                    <span className="text-xs text-muted-foreground">
+                                        {formatDraftAge(draft.savedAt)}
+                                    </span>
+                                </div>
+                                {event && (
+                                    <p className="text-xs text-muted-foreground mb-1">{event.title}</p>
+                                )}
+                                <p className="text-sm line-clamp-2">
+                                    {draft.content || "(내용 없음)"}
+                                </p>
+                            </button>
+                            <button
+                                onClick={() => onDelete(draft.id)}
+                                className="p-1.5 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </button>
+                        </div>
+                    </div>
+                );
+            })}
         </div>
     );
 }
