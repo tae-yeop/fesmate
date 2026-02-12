@@ -88,10 +88,12 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
         if (loadedUserId !== currentUserId) {
             // 비로그인 시에는 빈 데이터
             if (!currentUserId) {
-                setWishlist(new Set());
-                setAttended(new Set());
-                setLoadedUserId(currentUserId);
-                setIsFromSupabase(false);
+                Promise.resolve().then(() => {
+                    setWishlist(new Set());
+                    setAttended(new Set());
+                    setLoadedUserId(currentUserId);
+                    setIsFromSupabase(false);
+                });
                 return;
             }
 

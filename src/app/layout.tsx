@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Noto_Sans_KR } from "next/font/google";
+// Temporarily disabled Google Fonts due to fetch issues
+// import { Inter, Noto_Sans_KR } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -37,16 +38,17 @@ import { SetlistProvider } from "@/lib/setlist-context";
 import { OfflineProvider } from "@/lib/offline-context";
 import { NotificationPermissionBanner } from "@/components/notification";
 
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
+// Temporarily disabled
+// const inter = Inter({
+//   variable: "--font-inter",
+//   subsets: ["latin"],
+// });
 
-const notoSansKr = Noto_Sans_KR({
-  variable: "--font-noto-sans-kr",
-  subsets: ["latin"],
-  weight: ["100", "300", "400", "500", "700", "900"],
-});
+// const notoSansKr = Noto_Sans_KR({
+//   variable: "--font-noto-sans-kr",
+//   subsets: ["latin"],
+//   weight: ["100", "300", "400", "500", "700", "900"],
+// });
 
 export const viewport: Viewport = {
   themeColor: "#6366f1",
@@ -77,7 +79,7 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body
-        className={`${inter.variable} ${notoSansKr.variable} antialiased min-h-screen bg-background font-sans`}
+        className="antialiased min-h-screen bg-background font-sans"
       >
         <ThemeProvider defaultTheme="system" storageKey="fesmate-theme">
           <AuthProvider>

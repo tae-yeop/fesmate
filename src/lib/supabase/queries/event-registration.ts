@@ -225,7 +225,7 @@ export async function createUserEvent(
             const artistName = input.artists[i];
 
             // 기존 아티스트 검색
-            let { data: existingArtist } = await supabase
+            const { data: existingArtist } = await supabase
                 .from("artists")
                 .select("id")
                 .eq("name", artistName)
@@ -364,7 +364,7 @@ export async function updateUserEvent(
         for (let i = 0; i < input.artists.length; i++) {
             const artistName = input.artists[i];
 
-            let { data: existingArtist } = await supabase
+            const { data: existingArtist } = await supabase
                 .from("artists")
                 .select("id")
                 .eq("name", artistName)

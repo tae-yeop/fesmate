@@ -186,11 +186,13 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
 
     // Storage에서 불러오기 (Dev 모드용)
     useEffect(() => {
-        const stored = userProfilesAdapter.get();
-        if (stored) {
-            setLocalProfiles(stored);
-        }
-        setIsInitialized(true);
+        Promise.resolve().then(() => {
+            const stored = userProfilesAdapter.get();
+            if (stored) {
+                setLocalProfiles(stored);
+            }
+            setIsInitialized(true);
+        });
     }, []);
 
     // Storage에 저장 (Dev 모드만)
@@ -205,9 +207,11 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
         if (loadedUserId !== currentUserId) {
             // 비로그인 시
             if (!currentUserId) {
-                setSupabaseProfile(null);
-                setLoadedUserId(currentUserId);
-                setIsFromSupabase(false);
+                Promise.resolve().then(() => {
+                    setSupabaseProfile(null);
+                    setLoadedUserId(currentUserId);
+                    setIsFromSupabase(false);
+                });
                 return;
             }
 
